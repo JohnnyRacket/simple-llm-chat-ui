@@ -2,25 +2,38 @@
 
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { ContextUsageBar } from "@/components/context-usage-bar";
+import { ResponseStats } from "@/components/response-stats";
+import { ModelPicker, type ModelInfo } from "@/components/model-picker";
 import { Send } from "lucide-react";
 
+const PORTS = ["8080", "8081"];
+
+type ServerInfo = {
+  contextSize: number;
+  modelName: string | null;
+  paramsB: number | null;
+};
+
 type ChatMessage = UIMessage<{
-  usage?: { inputTokens: number; outputTokens: number };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    promptTps: number | null;
+    generationTps: number | null;
+    totalTimeMs: number | null;
+  };
 }>;
 
 export default function Chat() {
   const { messages, sendMessage, status } = useChat<ChatMessage>();
   const [input, setInput] = useState("");
-  const [serverInfo, setServerInfo] = useState<{
-    contextSize: number;
-    modelName: string | null;
-    paramsB: number | null;
-  }>({ contextSize: 0, modelName: null, paramsB: null });
+  const [selectedPort, setSelectedPort] = useState("8080");
+  const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -35,20 +48,35 @@ export default function Chat() {
   }, [messages]);
 
   useEffect(() => {
-    fetch("/api/server-info")
-      .then((res) => res.json())
-      .then((data) => setServerInfo(data))
-      .catch(() => {});
+    PORTS.forEach((port) => {
+      fetch(`/api/server-info?port=${port}`)
+        .then((res) => res.json())
+        .then((data: ServerInfo) => {
+          setModelsInfo((prev) => ({ ...prev, [port]: data }));
+        })
+        .catch(() => {});
+    });
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    sendMessage({ text: input });
+    sendMessage({ text: input }, { body: { port: selectedPort } });
     setInput("");
   }
 
+  const serverInfo = modelsInfo[selectedPort] ?? {
+    contextSize: 0,
+    modelName: null,
+    paramsB: null,
+  };
   const showUsage = usage && serverInfo.contextSize > 0;
+
+  const models: ModelInfo[] = PORTS.map((port) => ({
+    port,
+    modelName: modelsInfo[port]?.modelName ?? null,
+    paramsB: modelsInfo[port]?.paramsB ?? null,
+  })).filter((m) => m.modelName !== null);
 
   const inputIsland = (
     <div className={hasMessages ? "p-4 shrink-0" : ""}>
@@ -70,14 +98,21 @@ export default function Chat() {
             </Button>
           </div>
         </form>
-        {(showUsage || serverInfo.modelName) && (
+        {(showUsage || models.length > 0) && (
           <div className="border-t px-3 py-2">
             <ContextUsageBar
               inputTokens={usage?.inputTokens ?? 0}
               outputTokens={usage?.outputTokens ?? 0}
               contextSize={serverInfo.contextSize}
-              modelName={serverInfo.modelName}
-              paramsB={serverInfo.paramsB}
+              modelPicker={
+                models.length > 0 ? (
+                  <ModelPicker
+                    models={models}
+                    selectedPort={selectedPort}
+                    onSelect={setSelectedPort}
+                  />
+                ) : undefined
+              }
             />
           </div>
         )}
@@ -87,7 +122,7 @@ export default function Chat() {
 
   return (
     <main className="flex flex-col h-dvh bg-background">
-      <div className="absolute top-3 right-3 z-10">
+      <div className="absolute top-3 right-5 z-10">
         <ThemeToggle />
       </div>
 
@@ -95,34 +130,43 @@ export default function Chat() {
         <>
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-2xl space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground"
-                    }`}
-                  >
-                    {message.parts.map((part, i) => {
-                      if (part.type === "text") {
-                        return (
-                          <MarkdownMessage
-                            key={i}
-                            content={part.text}
-                          />
-                        );
-                      }
-                      return null;
-                    })}
+              {messages.map((message, idx) => {
+                const isCompleted =
+                  message.role === "assistant" &&
+                  (status === "ready" || idx !== messages.length - 1);
+                const statsUsage = isCompleted ? message.metadata?.usage : null;
+
+                return (
+                  <div key={message.id}>
+                    <div
+                      className={`flex ${
+                        message.role === "user" ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                          message.role === "user"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground"
+                        }`}
+                      >
+                        {message.parts.map((part, i) => {
+                          if (part.type === "text") {
+                            return (
+                              <MarkdownMessage
+                                key={i}
+                                content={part.text}
+                              />
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                    </div>
+                    {statsUsage && <ResponseStats usage={statsUsage} />}
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {isLoading &&
                 messages[messages.length - 1]?.role !== "assistant" && (

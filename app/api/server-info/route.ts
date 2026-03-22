@@ -1,24 +1,22 @@
-const BASE_URL = "http://192.168.1.168:8080";
-
-type ServerInfo = {
-  modelName: string | null;
-  contextSize: number;
-  paramsB: number | null;
-};
+const BASE_HOST = "http://192.168.1.168";
 
 function cleanModelName(raw: string): string {
   const filename = raw.split("/").pop() ?? raw;
   return filename.replace(/\.gguf$/i, "");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const port = searchParams.get("port") ?? "8080";
+  const baseUrl = `${BASE_HOST}:${port}`;
+
   let modelName: string | null = null;
   let contextSize = 0;
   let paramsB: number | null = null;
 
   // /v1/models — always available, gives model name + metadata
   try {
-    const res = await fetch(`${BASE_URL}/v1/models`);
+    const res = await fetch(`${baseUrl}/v1/models`);
     const data = await res.json();
     const model = data.data?.[0];
     if (model) {
@@ -35,7 +33,7 @@ export async function GET() {
 
   // /props — server-configured context size (overrides training context)
   try {
-    const res = await fetch(`${BASE_URL}/props`);
+    const res = await fetch(`${baseUrl}/props`);
     if (res.ok) {
       const data = await res.json();
       const nCtx = data.default_generation_settings?.n_ctx;
@@ -45,7 +43,7 @@ export async function GET() {
 
   // /slots — actual runtime context per slot (best source, may not be enabled)
   try {
-    const res = await fetch(`${BASE_URL}/slots`);
+    const res = await fetch(`${baseUrl}/slots`);
     if (res.ok) {
       const slots = await res.json();
       if (slots?.[0]?.n_ctx) {

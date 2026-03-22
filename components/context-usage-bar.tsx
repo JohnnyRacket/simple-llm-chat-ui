@@ -9,14 +9,12 @@ export function ContextUsageBar({
   inputTokens,
   outputTokens,
   contextSize,
-  modelName,
-  paramsB,
+  modelPicker,
 }: {
   inputTokens: number;
   outputTokens: number;
   contextSize: number;
-  modelName?: string | null;
-  paramsB?: number | null;
+  modelPicker?: React.ReactNode;
 }) {
   const totalTokens = (inputTokens || 0) + (outputTokens || 0);
   const showBar = contextSize > 0;
@@ -31,13 +29,9 @@ export function ContextUsageBar({
         ? "bg-yellow-500"
         : "bg-green-500";
 
-  const modelLabel = [modelName, paramsB ? `${paramsB}B` : null]
-    .filter(Boolean)
-    .join(" · ");
-
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-      {modelLabel && <span className="truncate">{modelLabel}</span>}
+      {modelPicker}
       {showBar && (
         <>
           <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden min-w-16">
