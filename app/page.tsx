@@ -36,6 +36,7 @@ export default function Chat() {
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScroll = useRef(true);
 
   const isLoading = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
@@ -43,8 +44,17 @@ export default function Chat() {
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const usage = lastAssistant?.metadata?.usage;
 
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldAutoScroll.current = distanceFromBottom < 32;
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldAutoScroll.current) {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -128,7 +138,7 @@ export default function Chat() {
 
       {hasMessages ? (
         <>
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-2xl space-y-4">
               {messages.map((message, idx) => {
                 const isCompleted =
