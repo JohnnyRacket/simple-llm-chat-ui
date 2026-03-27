@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker } from "@/components/model-picker";
 import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
-import { Bot, Brain, Code, GitFork, LayoutDashboard, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { ArrowUp, Bot, Brain, Code, GitFork, LayoutDashboard, Minimize2, Paperclip, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 type ChatMessage = UIMessage<{
@@ -145,7 +145,7 @@ export const ChatInput = memo(function ChatInput({
             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
             <Paperclip className="h-3.5 w-3.5" />
-            File upload
+            <span className="hidden sm:inline">File upload</span>
           </button>
           <button
             type="button"
@@ -158,7 +158,7 @@ export const ChatInput = memo(function ChatInput({
             }`}
           >
             <Wrench className="h-3.5 w-3.5" />
-            Tools
+            <span className="hidden sm:inline">Tools</span>
           </button>
           <button
             type="button"
@@ -171,7 +171,7 @@ export const ChatInput = memo(function ChatInput({
             }`}
           >
             <Brain className="h-3.5 w-3.5" />
-            Thinking
+            <span className="hidden sm:inline">Thinking</span>
           </button>
           <button
             type="button"
@@ -184,7 +184,7 @@ export const ChatInput = memo(function ChatInput({
             }`}
           >
             <Bot className="h-3.5 w-3.5" />
-            Sub Agents
+            <span className="hidden sm:inline">Sub Agents</span>
           </button>
           {agentsEnabled && (
             <div className="inline-flex items-center gap-1 rounded-md bg-purple-100 dark:bg-purple-900/40 px-1.5 py-1">
@@ -220,7 +220,7 @@ export const ChatInput = memo(function ChatInput({
             }`}
           >
             <Code className="h-3.5 w-3.5" />
-            Programmatic
+            <span className="hidden sm:inline">Programmatic</span>
           </button>
           <button
             type="button"
@@ -233,7 +233,7 @@ export const ChatInput = memo(function ChatInput({
             }`}
           >
             <LayoutDashboard className="h-3.5 w-3.5" />
-            Widgets
+            <span className="hidden sm:inline">Widgets</span>
           </button>
           {toolsEnabled && (
             <button
@@ -247,7 +247,7 @@ export const ChatInput = memo(function ChatInput({
               }`}
             >
               <FileText className="h-3.5 w-3.5" />
-              Create Doc
+              <span className="hidden sm:inline">Create Doc</span>
             </button>
           )}
           {onCompactFork && (
@@ -262,7 +262,7 @@ export const ChatInput = memo(function ChatInput({
               ) : (
                 <Minimize2 className="h-3.5 w-3.5" />
               )}
-              Compact & Fork
+              <span className="hidden sm:inline">Compact & Fork</span>
             </button>
           )}
           {onFork && (
@@ -272,7 +272,7 @@ export const ChatInput = memo(function ChatInput({
               className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors${onCompactFork ? "" : " ml-auto"}`}
             >
               <GitFork className="h-3.5 w-3.5" />
-              Fork
+              <span className="hidden sm:inline">Fork</span>
             </button>
           )}
         </div>
@@ -350,7 +350,7 @@ export const ChatInput = memo(function ChatInput({
               </div>
             ) : (
               <Button type="submit" className="h-8 w-8 rounded-full p-0" disabled={!canSend}>
-                <Send className="h-4 w-4" />
+                <ArrowUp className="h-4 w-4" />
                 <span className="sr-only">Send</span>
               </Button>
             )}

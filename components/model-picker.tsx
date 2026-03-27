@@ -31,8 +31,8 @@ export function ModelPicker({
 
   return (
     <Popover>
-      <PopoverTrigger className="flex items-center gap-1 truncate hover:text-foreground transition-colors cursor-pointer">
-        <span className="truncate">{label}</span>
+      <PopoverTrigger className="flex w-full items-center gap-1 min-w-0 hover:text-foreground transition-colors cursor-pointer">
+        <span className="truncate min-w-0">{label}</span>
         <ChevronDown className="size-3 shrink-0" />
       </PopoverTrigger>
       <PopoverContent className="min-w-48">

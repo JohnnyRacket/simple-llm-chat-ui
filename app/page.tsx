@@ -16,7 +16,9 @@ export default function Home() {
 
   const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled } = useChatSettings();
   const [sending, setSending] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 640 : true
+  );
 
   const handleSend = useCallback(
     async (text: string) => {

@@ -16,7 +16,9 @@ export function ChatShell({
 }) {
   const router = useRouter();
   const [chats, setChats] = useState(initialChats);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 640 : true
+  );
 
   const handleDeleteChat = useCallback(
     async (chatId: string) => {
