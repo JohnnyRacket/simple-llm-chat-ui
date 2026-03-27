@@ -1,8 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Plus, PanelLeft, Trash2 } from "lucide-react";
 import type { ChatListItem } from "@/hooks/use-chat-history";
+import {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogBackdrop,
+  AlertDialogViewport,
+  AlertDialogPopup,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogClose,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor(
@@ -31,6 +43,8 @@ export function ChatSidebar({
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -109,9 +123,7 @@ export function ChatSidebar({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm("Delete this chat? This cannot be undone.")) {
-                      onDeleteChat(chat.id);
-                    }
+                    setPendingDeleteId(chat.id);
                   }}
                   className="p-1.5 mr-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent text-sidebar-foreground/50 hover:text-destructive transition-opacity"
                 >
@@ -122,6 +134,39 @@ export function ChatSidebar({
           )}
         </div>
       </aside>
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null);
+        }}
+      >
+        <AlertDialogPortal>
+          <AlertDialogBackdrop />
+          <AlertDialogViewport>
+            <AlertDialogPopup>
+              <AlertDialogTitle>Delete chat?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This cannot be undone.
+              </AlertDialogDescription>
+              <div className="mt-4 flex justify-end gap-2">
+                <AlertDialogClose render={<Button variant="outline" />}>
+                  Cancel
+                </AlertDialogClose>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (pendingDeleteId) onDeleteChat(pendingDeleteId);
+                    setPendingDeleteId(null);
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </AlertDialogPopup>
+          </AlertDialogViewport>
+        </AlertDialogPortal>
+      </AlertDialog>
     </>
   );
 }
