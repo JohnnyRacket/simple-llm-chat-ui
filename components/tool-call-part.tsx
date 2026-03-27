@@ -14,26 +14,25 @@ type ToolPart = {
 };
 
 type SubAgentOutput = {
-  role: string;
+  result: string;
+  error?: string;
+  pending?: boolean;
+};
+
+type ParallelAgentOutput = {
   task: string;
   result: string;
-  steps: number;
-  toolCallCount: number;
   error?: string;
+  pending?: boolean;
 };
 
 type ParallelAgentsOutput = {
-  agents: SubAgentOutput[];
+  agents: ParallelAgentOutput[];
 };
 
 function SubAgentResult({ output }: { output: SubAgentOutput }) {
   return (
     <div className="space-y-2">
-      <div className="flex gap-3 text-xs text-muted-foreground">
-        <span>Role: <strong>{output.role}</strong></span>
-        <span>Steps: {output.steps}</span>
-        <span>Tool calls: {output.toolCallCount}</span>
-      </div>
       {output.error ? (
         <p className="text-xs text-destructive">{output.error}</p>
       ) : (
@@ -58,10 +57,7 @@ function ParallelAgentsResult({ output }: { output: ParallelAgentsOutput }) {
           >
             <Bot className="h-3.5 w-3.5 shrink-0 opacity-60" />
             <span className="flex-1 truncate font-medium opacity-80">
-              [{agent.role}] {agent.task.slice(0, 70)}{agent.task.length > 70 ? "…" : ""}
-            </span>
-            <span className="shrink-0 text-muted-foreground text-xs">
-              {agent.steps}s · {agent.toolCallCount}tc
+              {agent.task.slice(0, 70)}{agent.task.length > 70 ? "…" : ""}
             </span>
             {openIdx === i ? (
               <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-50" />
@@ -84,7 +80,7 @@ function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
   return (
     <div className="space-y-1.5">
       {output.agents.map((agent, i) => {
-        const isPending = agent.steps === 0 && !agent.error;
+        const isPending = agent.pending === true && !agent.error;
         return (
           <div key={i} className="flex items-center gap-2 text-xs">
             {isPending ? (
@@ -94,7 +90,6 @@ function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
             ) : (
               <Check className="h-3 w-3 shrink-0 text-green-500" />
             )}
-            <span className="shrink-0 text-muted-foreground">[{agent.role}]</span>
             <span className="flex-1 truncate opacity-80">
               {agent.task.slice(0, 80)}{agent.task.length > 80 ? "…" : ""}
             </span>
@@ -208,12 +203,11 @@ function getToolLabel(part: ToolPart, state: ToolDisplayState) {
   }
 
   if (state.toolName === "subAgent") {
-    const input = part.input as { role?: string; task?: string } | undefined;
-    const roleLabel = input?.role ? ` [${input.role}]` : "";
+    const input = part.input as { task?: string } | undefined;
     const task = input?.task ?? "";
     if (!task) return "Starting sub-agent…";
     const preview = task.slice(0, 60);
-    return `Sub-agent${roleLabel}: ${preview}${task.length > 60 ? "…" : ""}`;
+    return `Sub-agent: ${preview}${task.length > 60 ? "…" : ""}`;
   }
 
   if (state.toolName === "parallelAgents") {

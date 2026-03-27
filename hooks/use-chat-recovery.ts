@@ -34,7 +34,7 @@ export function useChatRecovery<T extends UIMessage>({
   }, [messages, status]);
 
   const attemptResume = useCallback(() => {
-    if (!isRecoverableStatus(statusRef.current)) {
+    if (statusRef.current !== "submitted") {
       return;
     }
 
@@ -52,18 +52,26 @@ export function useChatRecovery<T extends UIMessage>({
   }, [finalizeStream]);
 
   useEffect(() => {
-    if (status !== "error") return;
-
-    attemptResume();
-  }, [attemptResume, status]);
-
-  useEffect(() => {
     const handleOnline = () => {
-      attemptResume();
+      if (statusRef.current === "submitted") {
+        attemptResume();
+        return;
+      }
+
+      if (statusRef.current === "streaming" || statusRef.current === "error") {
+        attemptFinalize();
+      }
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        attemptResume();
+        if (statusRef.current === "submitted") {
+          attemptResume();
+          return;
+        }
+
+        if (statusRef.current === "streaming" || statusRef.current === "error") {
+          attemptFinalize();
+        }
       }
     };
 
@@ -74,7 +82,7 @@ export function useChatRecovery<T extends UIMessage>({
       window.removeEventListener("online", handleOnline);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [attemptResume]);
+  }, [attemptFinalize, attemptResume]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {

@@ -4,6 +4,7 @@ import { getActiveStreamId, clearActiveStreamId } from "@/lib/db/chats";
 import { streamContext } from "@/lib/stream";
 import { getAbort, removeAbort } from "@/lib/abort-registry";
 import db from "@/lib/db";
+import { logDebug } from "@/lib/debug-chat-stream";
 
 async function resolveStream(
   params: Promise<{ chatId: string }>
@@ -14,14 +15,28 @@ async function resolveStream(
   const activeStreamId = await getActiveStreamId(chatId, user.id);
 
   if (!activeStreamId) {
+    logDebug("[chat-stream]", "resume miss", {
+      chatId,
+      reason: "no_active_stream_id",
+    });
     return null;
   }
 
   const stream = await streamContext.resumeExistingStream(activeStreamId);
 
   if (!stream) {
+    logDebug("[chat-stream]", "resume miss", {
+      chatId,
+      streamId: activeStreamId,
+      reason: "resume_returned_null",
+    });
     return null;
   }
+
+  logDebug("[chat-stream]", "resume ok", {
+    chatId,
+    streamId: activeStreamId,
+  });
 
   return stream;
 }
@@ -69,6 +84,9 @@ export async function DELETE(
   getAbort(chatId)?.abort();
   removeAbort(chatId);
   await clearActiveStreamId(chatId);
+  logDebug("[chat-stream]", "resume delete", {
+    chatId,
+  });
 
   return new Response(null, { status: 204 });
 }

@@ -1,6 +1,7 @@
 import {
   streamText,
   convertToModelMessages,
+  createUIMessageStreamResponse,
   generateId,
   wrapLanguageModel,
   extractReasoningMiddleware,
@@ -22,6 +23,8 @@ import { streamContext } from "@/lib/stream";
 import { registerAbort, removeAbort } from "@/lib/abort-registry";
 import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument } from "@/lib/tools";
 import { createLLM } from "@/lib/llm";
+import { errorDetails, errorMessage, logDebug, previewValue } from "@/lib/debug-chat-stream";
+import { repairParentAgentToolCall } from "@/lib/tools/parent-agent-tool-repair";
 
 function generateTitle(text: string): string {
   const max = 50;
@@ -29,6 +32,10 @@ function generateTitle(text: string): string {
   const truncated = text.slice(0, max);
   const lastSpace = truncated.lastIndexOf(" ");
   return (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated) + "…";
+}
+
+function isTransientToolInputParseError(errorText: string) {
+  return /Failed to parse input at pos \d+:/i.test(errorText);
 }
 
 export async function POST(req: Request) {
@@ -107,6 +114,16 @@ export async function POST(req: Request) {
     tools.parallelAgents = createParallelAgentsTool(resolvedAgentPort, enableTools);
   }
   const hasTools = Object.keys(tools).length > 0;
+  logDebug("[chat-stream]", "POST start", {
+    chatId: resolvedChatId,
+    port: resolvedPort,
+    agentPort: resolvedAgentPort,
+    enableTools,
+    enableAgents,
+    enableReasoning,
+    enableCreateDocument,
+    hasTools,
+  });
 
   const agentSystem =
     "You are an orchestrating AI assistant. You delegate work to sub-agents rather than answering directly.\n\n" +
@@ -115,10 +132,13 @@ export async function POST(req: Request) {
     "- parallelAgents: for multiple parallel tasks (pass an array of agents, all run simultaneously)\n\n" +
     "RULES:\n" +
     "1. When asked to research, analyze, or investigate multiple distinct things, ALWAYS use parallelAgents — one entry per thing.\n" +
-    "2. When the request is vague or the best paths are unclear: first call subAgent with role=planner to map out the research directions. Then in the next step call parallelAgents with one agent per direction from the plan.\n" +
+    "2. When the request is vague or the best paths are unclear: first call subAgent with a task that asks for a short numbered research plan. Then in the next step call parallelAgents with one agent per direction from the plan.\n" +
     "3. Use subAgent only when there is genuinely a single focused task.\n" +
-    "4. After all agents return, synthesize their findings into a coherent final response.\n" +
-    "5. Never answer from your own knowledge — always delegate first.";
+    "4. Keep agent usage minimal. Prefer one agent call unless the user clearly needs multiple independent investigations.\n" +
+    "5. After all agents return, immediately synthesize their findings into a concise final response.\n" +
+    "6. Do not continue reasoning at length after tool results. Do not call more tools after agents return unless the user explicitly requires another step.\n" +
+    "7. Keep the final answer short and directly useful. Avoid repeating the full sub-agent output.\n" +
+    "8. Never answer from your own knowledge — always delegate first.";
 
   const webToolSystem =
     `You are a helpful assistant with access to web search and page reading tools${enableCreateDocument ? ", and document creation" : ""}. ` +
@@ -138,8 +158,63 @@ export async function POST(req: Request) {
     abortSignal: abortController.signal,
     ...(hasTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
-    ...(hasTools ? { tools, stopWhen: stepCountIs(8) } : {}),
+    ...(hasTools
+      ? {
+          tools,
+          stopWhen: stepCountIs(8),
+          ...(enableAgents
+            ? { experimental_repairToolCall: repairParentAgentToolCall }
+            : {}),
+        }
+      : {}),
+    experimental_onToolCallFinish(event) {
+      logDebug("[chat-stream]", "toolCallFinish", {
+        chatId: resolvedChatId,
+        stepNumber: event.stepNumber,
+        toolName: event.toolCall.toolName,
+        toolCallId: event.toolCall.toolCallId,
+        durationMs: event.durationMs,
+        success: event.success,
+        ...(event.success
+          ? { output: previewValue(event.output) }
+          : { error: errorDetails(event.error) }),
+      });
+    },
+    onStepFinish(step) {
+      logDebug("[chat-stream]", "stepFinish", {
+        chatId: resolvedChatId,
+        stepNumber: step.stepNumber,
+        finishReason: step.finishReason,
+        rawFinishReason: step.rawFinishReason,
+        toolCalls: step.toolCalls.map((toolCall) => ({
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+        })),
+        toolResultCount: step.toolResults.length,
+        contentTypes: step.content.map((part) => part.type),
+        textLength: step.text.length,
+        reasoningLength: step.reasoningText?.length ?? 0,
+      });
+    },
+    onError({ error }) {
+      logDebug("[chat-stream]", "onError", {
+        chatId: resolvedChatId,
+        error: errorMessage(error),
+        details: errorDetails(error),
+      });
+    },
+    onAbort({ steps }) {
+      logDebug("[chat-stream]", "onAbort", {
+        chatId: resolvedChatId,
+        finishedSteps: steps.length,
+      });
+    },
     async onFinish({ text, steps, usage, providerMetadata }) {
+      logDebug("[chat-stream]", "onFinish", {
+        chatId: resolvedChatId,
+        steps: steps.length,
+        textLength: text.length,
+      });
       const t = (
         providerMetadata?.["local-llama"] as
           | Record<string, unknown>
@@ -184,40 +259,74 @@ export async function POST(req: Request) {
 
   let timings: Record<string, number> | null = null;
 
-  return result.toUIMessageStreamResponse({
+  const uiMessageStream = result
+    .toUIMessageStream({
+      generateMessageId: generateId,
+      sendReasoning: enableReasoning,
+      messageMetadata({ part }) {
+        if (part.type === "finish-step") {
+          const meta = (part as Record<string, unknown>).providerMetadata as
+            | Record<string, Record<string, unknown>>
+            | undefined;
+          timings =
+            (meta?.["local-llama"]?.timings as Record<string, number>) ?? null;
+        }
+        if (part.type === "finish") {
+          return {
+            usage: {
+              inputTokens: part.totalUsage.inputTokens ?? 0,
+              outputTokens: part.totalUsage.outputTokens ?? 0,
+              promptTps: timings?.prompt_per_second ?? null,
+              generationTps: timings?.predicted_per_second ?? null,
+              totalTimeMs: timings
+                ? (timings.prompt_ms ?? 0) + (timings.predicted_ms ?? 0)
+                : null,
+            },
+          };
+        }
+      },
+    })
+    .pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          if (
+            chunk.type === "error" &&
+            isTransientToolInputParseError(chunk.errorText)
+          ) {
+            logDebug("[chat-stream]", "suppress transient ui error", {
+              chatId: resolvedChatId,
+              error: chunk.errorText,
+            });
+            return;
+          }
+
+          controller.enqueue(chunk);
+        },
+      })
+    );
+
+  return createUIMessageStreamResponse({
     headers: {
       "X-Chat-Id": resolvedChatId,
       "Content-Encoding": "none",
       "Cache-Control": "no-cache, no-transform",
     },
-    generateMessageId: generateId,
-    sendReasoning: enableReasoning,
-    messageMetadata({ part }) {
-      if (part.type === "finish-step") {
-        const meta = (part as Record<string, unknown>).providerMetadata as
-          | Record<string, Record<string, unknown>>
-          | undefined;
-        timings =
-          (meta?.["local-llama"]?.timings as Record<string, number>) ?? null;
-      }
-      if (part.type === "finish") {
-        return {
-          usage: {
-            inputTokens: part.totalUsage.inputTokens ?? 0,
-            outputTokens: part.totalUsage.outputTokens ?? 0,
-            promptTps: timings?.prompt_per_second ?? null,
-            generationTps: timings?.predicted_per_second ?? null,
-            totalTimeMs: timings
-              ? (timings.prompt_ms ?? 0) + (timings.predicted_ms ?? 0)
-              : null,
-          },
-        };
-      }
-    },
-    async consumeSseStream({ stream }) {
+    stream: uiMessageStream,
+    consumeSseStream({ stream }) {
       const streamId = generateId();
-      await streamContext.createNewResumableStream(streamId, () => stream);
-      await setActiveStreamId(resolvedChatId, streamId);
+      logDebug("[chat-stream]", "resumable register start", {
+        chatId: resolvedChatId,
+        streamId,
+      });
+      void streamContext.createNewResumableStream(streamId, () => stream).then(
+        async () => {
+          await setActiveStreamId(resolvedChatId, streamId);
+          logDebug("[chat-stream]", "resumable register done", {
+            chatId: resolvedChatId,
+            streamId,
+          });
+        }
+      );
     },
   });
 }
