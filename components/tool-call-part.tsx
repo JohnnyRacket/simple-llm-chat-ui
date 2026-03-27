@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Code, Download, FileText, Globe, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Code, Download, FileText, Globe, LayoutDashboard, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { WidgetFrame } from "@/components/widget-frame";
 
 type ToolPart = {
   type: string;
@@ -103,6 +104,7 @@ function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
   );
 }
 
+type WidgetOutput = { html: string; title: string };
 type SearchResult = { title: string; url: string; snippet: string };
 type SearchOutput = { results: SearchResult[] };
 type FetchOutput = { title: string; content: string };
@@ -258,7 +260,43 @@ function getToolLabel(part: ToolPart, state: ToolDisplayState) {
     return state.isPending ? `Running ${lang}…` : `Executed ${lang}`;
   }
 
+  if (state.toolName === "renderWidget") {
+    const input = part.input as { title?: string } | undefined;
+    return input?.title ? `Widget: ${input.title}` : state.isPending ? "Building widget…" : "Widget";
+  }
+
   return state.toolName;
+}
+
+function WidgetStreamingPreview({ part }: { part: ToolPart }) {
+  const input = part.input as { html?: string; title?: string } | undefined;
+  const html = input?.html ?? "";
+  const title = input?.title ?? "";
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [html]);
+
+  return (
+    <div className="my-1 rounded-md border border-foreground/10 bg-background/50 text-foreground overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
+        <span className="flex-1 truncate text-sm font-medium opacity-90">
+          {title ? `Building: ${title}` : "Building widget…"}
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground/50 font-mono">{html.length} chars</span>
+      </div>
+      {html && (
+        <div className="border-t border-foreground/10 bg-foreground/[0.02] px-3 py-2 max-h-48 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-all text-[11px] text-muted-foreground/60 font-mono leading-relaxed">
+            {html}
+            <div ref={bottomRef} />
+          </pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ToolCallPart({ part }: { part: ToolPart }) {
@@ -272,6 +310,15 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
         <DocumentCard output={part.output as DocumentOutput} />
       </div>
     );
+  }
+
+  if (state.toolName === "renderWidget" && state.isDone) {
+    const output = part.output as WidgetOutput;
+    return <WidgetFrame html={output.html} title={output.title} />;
+  }
+
+  if (state.toolName === "renderWidget" && state.isPending) {
+    return <WidgetStreamingPreview part={part} />;
   }
 
   return (
@@ -291,6 +338,8 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
           <FileText className="h-4 w-4 shrink-0 opacity-70" />
         ) : state.toolName === "executeCode" ? (
           <Code className="h-4 w-4 shrink-0 opacity-70" />
+        ) : state.toolName === "renderWidget" ? (
+          <LayoutDashboard className="h-4 w-4 shrink-0 opacity-70" />
         ) : (
           <Globe className="h-4 w-4 shrink-0 opacity-70" />
         )}

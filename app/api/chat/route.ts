@@ -21,7 +21,7 @@ import {
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
 import { registerAbort, removeAbort } from "@/lib/abort-registry";
-import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument, executeCode } from "@/lib/tools";
+import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument, executeCode, renderWidget } from "@/lib/tools";
 import { createLLM } from "@/lib/llm";
 import { errorDetails, errorMessage, logDebug, previewValue } from "@/lib/debug-chat-stream";
 import { repairParentAgentToolCall } from "@/lib/tools/parent-agent-tool-repair";
@@ -49,7 +49,8 @@ export async function POST(req: Request) {
     enableReasoning = false,
     enableCreateDocument = false,
     enableProgrammatic = false,
-  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean; enableProgrammatic?: boolean } = await req.json();
+    enableWidget = false,
+  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean; enableProgrammatic?: boolean; enableWidget?: boolean } = await req.json();
 
   const user = await getUser();
   const userContent =
@@ -117,6 +118,9 @@ export async function POST(req: Request) {
   if (enableProgrammatic) {
     tools.executeCode = executeCode;
   }
+  if (enableWidget) {
+    tools.renderWidget = renderWidget;
+  }
   const hasTools = Object.keys(tools).length > 0;
   logDebug("[chat-stream]", "POST start", {
     chatId: resolvedChatId,
@@ -127,6 +131,7 @@ export async function POST(req: Request) {
     enableReasoning,
     enableCreateDocument,
     enableProgrammatic,
+    enableWidget,
     hasTools,
   });
 
@@ -150,6 +155,7 @@ export async function POST(req: Request) {
       enableTools ? "web search and page reading tools" : null,
       enableProgrammatic ? "a sandboxed code execution environment (Python, JavaScript, Bash)" : null,
       enableCreateDocument ? "document creation" : null,
+      enableWidget ? "an interactive widget renderer" : null,
     ].filter(Boolean).join(", ")}. ` +
     "When you use a tool, always read the results carefully and then provide a thorough answer to the user based on what you found. " +
     (enableCreateDocument
@@ -157,6 +163,12 @@ export async function POST(req: Request) {
       : "") +
     (enableProgrammatic
       ? "When asked to compute, calculate, or process data, prefer using the executeCode tool. "
+      : "") +
+    (enableWidget
+      ? "When a visual or interactive component would help the user — such as a chart, calculator, data table, timeline, or game — use the renderWidget tool. " +
+        "Produce a complete self-contained HTML document. " +
+        "For React, use this exact pattern: import React and ALL hooks (useState, useEffect, etc.) from 'react'; import createRoot from 'react-dom/client'; never use ReactDOM.createRoot; never use JSX (no transpiler available) — use React.createElement() instead; no TypeScript. " +
+        "After calling the tool, briefly describe what you built. "
       : "") +
     "Never stop after a tool call without giving a final response.";
 

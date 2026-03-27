@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker } from "@/components/model-picker";
 import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
-import { Bot, Brain, Code, GitFork, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { Bot, Brain, Code, GitFork, LayoutDashboard, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 type ChatMessage = UIMessage<{
@@ -17,6 +17,20 @@ type ChatMessage = UIMessage<{
     totalTimeMs: number | null;
   };
 }>;
+
+function squigglyPath(cx: number, cy: number, r: number, amplitude: number, teeth: number): string {
+  const pts: string[] = [];
+  const points = 120;
+  for (let i = 0; i <= points; i++) {
+    const theta = (i / points) * Math.PI * 2;
+    const radius = r + amplitude * Math.sin(teeth * theta);
+    const x = (cx + radius * Math.cos(theta)).toFixed(2);
+    const y = (cy + radius * Math.sin(theta)).toFixed(2);
+    pts.push(i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`);
+  }
+  pts.push("Z");
+  return pts.join(" ");
+}
 
 type Attachment = {
   filename: string;
@@ -62,6 +76,8 @@ export const ChatInput = memo(function ChatInput({
     setCreateDocumentEnabled,
     programmaticEnabled,
     setProgrammaticEnabled,
+    widgetEnabled,
+    setWidgetEnabled,
     serverInfo,
     modelsInfo,
     models,
@@ -121,7 +137,7 @@ export const ChatInput = memo(function ChatInput({
   return (
     <div className={hasMessages ? "p-4 shrink-0" : ""}>
       <div className="mx-auto max-w-4xl rounded-xl border bg-background shadow-sm">
-        <div className="flex items-center gap-1 px-3 pt-2">
+        <div className="flex flex-wrap items-center gap-1 px-3 pt-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -144,33 +160,18 @@ export const ChatInput = memo(function ChatInput({
             <Wrench className="h-3.5 w-3.5" />
             Tools
           </button>
-          {toolsEnabled && (
-            <button
-              type="button"
-              onClick={() => setCreateDocumentEnabled(!createDocumentEnabled)}
-              aria-pressed={createDocumentEnabled}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-                createDocumentEnabled
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Create Doc
-            </button>
-          )}
           <button
             type="button"
-            onClick={() => setProgrammaticEnabled(!programmaticEnabled)}
-            aria-pressed={programmaticEnabled}
+            onClick={() => setReasoningEnabled(!reasoningEnabled)}
+            aria-pressed={reasoningEnabled}
             className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-              programmaticEnabled
-                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+              reasoningEnabled
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <Code className="h-3.5 w-3.5" />
-            Programmatic
+            <Brain className="h-3.5 w-3.5" />
+            Thinking
           </button>
           <button
             type="button"
@@ -210,17 +211,45 @@ export const ChatInput = memo(function ChatInput({
           )}
           <button
             type="button"
-            onClick={() => setReasoningEnabled(!reasoningEnabled)}
-            aria-pressed={reasoningEnabled}
+            onClick={() => setProgrammaticEnabled(!programmaticEnabled)}
+            aria-pressed={programmaticEnabled}
             className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-              reasoningEnabled
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              programmaticEnabled
+                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <Brain className="h-3.5 w-3.5" />
-            Thinking
+            <Code className="h-3.5 w-3.5" />
+            Programmatic
           </button>
+          <button
+            type="button"
+            onClick={() => setWidgetEnabled(!widgetEnabled)}
+            aria-pressed={widgetEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              widgetEnabled
+                ? "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Widgets
+          </button>
+          {toolsEnabled && (
+            <button
+              type="button"
+              onClick={() => setCreateDocumentEnabled(!createDocumentEnabled)}
+              aria-pressed={createDocumentEnabled}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                createDocumentEnabled
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Create Doc
+            </button>
+          )}
           {onCompactFork && (
             <button
               type="button"
@@ -298,16 +327,29 @@ export const ChatInput = memo(function ChatInput({
               autoFocus
             />
             {isLoading ? (
-              <Button
-                type="button"
-                className="h-auto px-3"
-                onClick={onStop}
-              >
-                <Square className="h-4 w-4" />
-                <span className="sr-only">Stop</span>
-              </Button>
+              <div className="relative h-8 w-8">
+                <svg
+                  className="absolute -inset-1 animate-spin [animation-duration:6s] pointer-events-none"
+                  viewBox="0 0 40 40"
+                  style={{ width: 40, height: 40 }}
+                >
+                  <path
+                    d={`${squigglyPath(20, 20, 16, 2, 8)} M 33.5,20 A 13.5,13.5 0 1,0 6.5,20 A 13.5,13.5 0 1,0 33.5,20 Z`}
+                    fill="currentColor"
+                    fillRule="evenodd"
+                  />
+                </svg>
+                <Button
+                  type="button"
+                  className="h-8 w-8 rounded-full p-0"
+                  onClick={onStop}
+                >
+                  <Square className="h-4 w-4" />
+                  <span className="sr-only">Stop</span>
+                </Button>
+              </div>
             ) : (
-              <Button type="submit" className="h-auto px-3" disabled={!canSend}>
+              <Button type="submit" className="h-8 w-8 rounded-full p-0" disabled={!canSend}>
                 <Send className="h-4 w-4" />
                 <span className="sr-only">Send</span>
               </Button>

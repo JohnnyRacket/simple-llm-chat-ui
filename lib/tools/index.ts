@@ -8,3 +8,4 @@ export type {
 } from "./sub-agent";
 export { createDocument } from "./create-document";
 export { executeCode } from "./execute-code";
+export { renderWidget } from "./render-widget";

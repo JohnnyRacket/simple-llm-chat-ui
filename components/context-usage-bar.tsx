@@ -31,7 +31,7 @@ export function ContextUsageBar({
 
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground min-w-0">
-      {modelPicker}
+      <div className="flex-1 min-w-0">{modelPicker}</div>
       {showBar && (
         <div className="flex items-center gap-3 ml-auto min-w-0">
           <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden min-w-12">

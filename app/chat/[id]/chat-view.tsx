@@ -68,6 +68,7 @@ export function ChatView({
     reasoningEnabled,
     createDocumentEnabled,
     programmaticEnabled,
+    widgetEnabled,
     serverInfo,
   } = useChatSettings();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -83,11 +84,12 @@ export function ChatView({
     reasoningEnabled: boolean;
     createDocumentEnabled: boolean;
     programmaticEnabled: boolean;
+    widgetEnabled: boolean;
   };
-  const settingsRef = useRef<SettingsSnapshot>({ selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled });
+  const settingsRef = useRef<SettingsSnapshot>({ selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled });
   useEffect(() => {
-    settingsRef.current = { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled };
-  }, [selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled]);
+    settingsRef.current = { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled };
+  }, [selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled]);
 
   // Initialize port from the chat's stored port on mount
   useEffect(() => {
@@ -110,6 +112,7 @@ export function ChatView({
             enableReasoning: settingsRef.current.reasoningEnabled,
             enableCreateDocument: settingsRef.current.createDocumentEnabled,
             enableProgrammatic: settingsRef.current.programmaticEnabled,
+            enableWidget: settingsRef.current.widgetEnabled,
           },
         }),
       }),
