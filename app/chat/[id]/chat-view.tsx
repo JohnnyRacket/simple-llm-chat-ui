@@ -51,8 +51,8 @@ export function ChatView({
 }) {
   const router = useRouter();
   const [selectedPort, setSelectedPort] = useState(port);
-  const [toolsEnabled, setToolsEnabled] = useState(false);
-  const [reasoningEnabled, setReasoningEnabled] = useState(false);
+  const [toolsEnabled, setToolsEnabled] = useState(true);
+  const [reasoningEnabled, setReasoningEnabled] = useState(true);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -237,14 +237,6 @@ export function ChatView({
                 );
               })}
 
-              {isLoading &&
-                messages[messages.length - 1]?.role !== "assistant" && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-lg px-4 py-2 text-muted-foreground">
-                      Thinking...
-                    </div>
-                  </div>
-                )}
 
               <div ref={scrollRef} />
             </div>

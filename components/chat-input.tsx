@@ -4,7 +4,7 @@ import { memo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker, type ModelInfo } from "@/components/model-picker";
-import { Brain, GitFork, Globe, Paperclip, Send, X, FileText, Loader2 } from "lucide-react";
+import { Brain, GitFork, Globe, Paperclip, Send, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 const PORTS = ["8080", "8081"];
@@ -140,8 +140,8 @@ export const ChatInput = memo(function ChatInput({
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <Globe className="h-3.5 w-3.5" />
-            Web search
+            <Wrench className="h-3.5 w-3.5" />
+            Tools
           </button>
           <button
             type="button"

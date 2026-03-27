@@ -132,26 +132,28 @@ export async function POST(req: Request) {
     ...(enableTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
     ...(enableTools ? { tools: { webSearch, fetchPage }, stopWhen: stepCountIs(8) } : {}),
-    async onFinish({ text, steps, usage, providerMetadata, reasoningText }) {
+    async onFinish({ text, steps, usage, providerMetadata }) {
       const t = (
         providerMetadata?.["local-llama"] as
           | Record<string, unknown>
           | undefined
       )?.timings as Record<string, number> | undefined;
 
-      const toolSteps =
-        steps.length > 1
-          ? steps.flatMap((s) =>
-              s.toolCalls.map((tc) => ({
-                toolCallId: tc.toolCallId,
-                toolName: tc.toolName,
-                input: (tc as { input?: unknown }).input,
-                result: s.toolResults.find(
-                  (tr) => tr.toolCallId === tc.toolCallId
-                ),
-              }))
-            )
-          : undefined;
+      // Store per-step reasoning and tool calls so we can fully reconstruct
+      // the conversation (reasoning → tool call → reasoning → final answer).
+      const stepsData = steps
+        .map((s) => ({
+          reasoning: s.reasoningText || undefined,
+          toolCalls: s.toolCalls.map((tc) => ({
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            input: (tc as { input?: unknown }).input,
+            result: s.toolResults.find(
+              (tr) => tr.toolCallId === tc.toolCallId
+            ),
+          })),
+        }))
+        .filter((s) => s.reasoning || s.toolCalls.length > 0);
 
       const metadata = {
         usage: {
@@ -163,8 +165,7 @@ export async function POST(req: Request) {
             ? (t.prompt_ms ?? 0) + (t.predicted_ms ?? 0)
             : null,
         },
-        ...(toolSteps ? { toolSteps } : {}),
-        ...(reasoningText ? { reasoningText } : {}),
+        ...(stepsData.length > 0 ? { stepsData } : {}),
       };
 
       await appendMessage(resolvedChatId, "assistant", text, metadata);

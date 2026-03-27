@@ -16,8 +16,8 @@ export default function Home() {
 
   const [sending, setSending] = useState(false);
   const [selectedPort, setSelectedPort] = useState("8080");
-  const [toolsEnabled, setToolsEnabled] = useState(false);
-  const [reasoningEnabled, setReasoningEnabled] = useState(false);
+  const [toolsEnabled, setToolsEnabled] = useState(true);
+  const [reasoningEnabled, setReasoningEnabled] = useState(true);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
 

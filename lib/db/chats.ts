@@ -107,36 +107,70 @@ export async function loadMessages(
     const parts: MessagePart[] = [];
 
     if (r.role === "assistant") {
-      if (typeof meta?.reasoningText === "string") {
-        parts.push({ type: "reasoning", text: meta.reasoningText, state: "done" });
-      }
-      const toolSteps = meta?.toolSteps as
-        | Array<{
-            toolCallId: string;
-            toolName: string;
-            input: unknown;
-            result?: { output?: unknown; errorText?: string };
-          }>
+      type StoredToolCall = {
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+        result?: { output?: unknown; errorText?: string };
+      };
+
+      const stepsData = meta?.stepsData as
+        | Array<{ reasoning?: string; toolCalls: StoredToolCall[] }>
         | undefined;
-      if (toolSteps) {
-        for (const step of toolSteps) {
-          const toolType = `tool-${step.toolName}` as `tool-${string}`;
-          if (step.result?.errorText) {
-            parts.push({
-              type: toolType,
-              toolCallId: step.toolCallId,
-              state: "output-error",
-              input: step.input,
-              errorText: step.result.errorText,
-            });
-          } else {
-            parts.push({
-              type: toolType,
-              toolCallId: step.toolCallId,
-              state: "output-available",
-              input: step.input,
-              output: step.result?.output,
-            });
+
+      if (stepsData) {
+        // New format: per-step reasoning + tool calls, interleaved in order
+        for (const step of stepsData) {
+          if (step.reasoning) {
+            parts.push({ type: "reasoning", text: step.reasoning, state: "done" });
+          }
+          for (const tc of step.toolCalls) {
+            const toolType = `tool-${tc.toolName}` as `tool-${string}`;
+            if (tc.result?.errorText) {
+              parts.push({
+                type: toolType,
+                toolCallId: tc.toolCallId,
+                state: "output-error",
+                input: tc.input,
+                errorText: tc.result.errorText,
+              });
+            } else {
+              parts.push({
+                type: toolType,
+                toolCallId: tc.toolCallId,
+                state: "output-available",
+                input: tc.input,
+                output: tc.result?.output,
+              });
+            }
+          }
+        }
+      } else {
+        // Legacy format
+        if (typeof meta?.reasoningText === "string") {
+          parts.push({ type: "reasoning", text: meta.reasoningText, state: "done" });
+        }
+        const toolSteps = meta?.toolSteps as StoredToolCall[] | undefined;
+        if (toolSteps) {
+          for (const tc of toolSteps) {
+            const toolType = `tool-${tc.toolName}` as `tool-${string}`;
+            if (tc.result?.errorText) {
+              parts.push({
+                type: toolType,
+                toolCallId: tc.toolCallId,
+                state: "output-error",
+                input: tc.input,
+                errorText: tc.result.errorText,
+              });
+            } else {
+              parts.push({
+                type: toolType,
+                toolCallId: tc.toolCallId,
+                state: "output-available",
+                input: tc.input,
+                output: tc.result?.output,
+              });
+            }
           }
         }
       }
