@@ -1,6 +1,22 @@
-import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import {
+  streamText,
+  convertToModelMessages,
+  generateId,
+  type UIMessage,
+} from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { SharedV3ProviderMetadata } from "@ai-sdk/provider";
+import { getUser } from "@/lib/user";
+import {
+  createChatWithMessage,
+  appendMessage,
+  loadMessages,
+  touchChat,
+  setActiveStreamId,
+  clearActiveStreamId,
+} from "@/lib/db/chats";
+import db from "@/lib/db";
+import { streamContext } from "@/lib/stream";
 
 const BASE_HOST = "http://192.168.1.168";
 
@@ -35,19 +51,94 @@ function createLLM(port: string) {
   });
 }
 
+function generateTitle(text: string): string {
+  const max = 50;
+  if (text.length <= max) return text;
+  const truncated = text.slice(0, max);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated) + "…";
+}
+
 export async function POST(req: Request) {
-  const { messages, port = "8080" }: { messages: UIMessage[]; port?: string } = await req.json();
+  const {
+    id: incomingChatId,
+    message,
+    port = "8080",
+  }: { id?: string; message: UIMessage; port?: string } = await req.json();
+
+  const user = await getUser();
+  const userContent =
+    message.parts
+      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("") ?? "";
+
+  let resolvedChatId: string;
+
+  if (incomingChatId) {
+    // Validate ownership
+    const chat = await db
+      .selectFrom("chats")
+      .select("id")
+      .where("id", "=", incomingChatId)
+      .where("user_id", "=", user.id)
+      .executeTakeFirst();
+
+    if (!chat) {
+      return Response.json({ error: "Chat not found" }, { status: 404 });
+    }
+
+    resolvedChatId = incomingChatId;
+    await appendMessage(resolvedChatId, "user", userContent);
+  } else {
+    const title = generateTitle(userContent);
+    resolvedChatId = await createChatWithMessage(user.id, title, userContent);
+  }
+
+  // Load full conversation from DB for context
+  const dbMessages = await loadMessages(resolvedChatId, user.id);
+  const uiMessages: UIMessage[] = dbMessages.map((m) => ({
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    parts: m.parts,
+    createdAt: m.createdAt,
+  }));
 
   const llm = createLLM(port);
 
   const result = streamText({
     model: llm("model"),
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(uiMessages),
+    async onFinish({ text, usage, providerMetadata }) {
+      const t = (
+        providerMetadata?.["local-llama"] as
+          | Record<string, unknown>
+          | undefined
+      )?.timings as Record<string, number> | undefined;
+
+      const metadata = {
+        usage: {
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          promptTps: t?.prompt_per_second ?? null,
+          generationTps: t?.predicted_per_second ?? null,
+          totalTimeMs: t
+            ? (t.prompt_ms ?? 0) + (t.predicted_ms ?? 0)
+            : null,
+        },
+      };
+
+      await appendMessage(resolvedChatId, "assistant", text, metadata);
+      await clearActiveStreamId(resolvedChatId);
+      await touchChat(resolvedChatId);
+    },
   });
 
   let timings: Record<string, number> | null = null;
 
   return result.toUIMessageStreamResponse({
+    headers: { "X-Chat-Id": resolvedChatId },
+    generateMessageId: generateId,
     messageMetadata({ part }) {
       if (part.type === "finish-step") {
         const meta = (part as Record<string, unknown>).providerMetadata as
@@ -69,6 +160,11 @@ export async function POST(req: Request) {
           },
         };
       }
+    },
+    async consumeSseStream({ stream }) {
+      const streamId = generateId();
+      await streamContext.createNewResumableStream(streamId, () => stream);
+      await setActiveStreamId(resolvedChatId, streamId);
     },
   });
 }

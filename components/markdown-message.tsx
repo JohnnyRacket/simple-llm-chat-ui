@@ -1,7 +1,8 @@
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function MarkdownMessage({
+export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   className,
 }: {
@@ -10,7 +11,7 @@ export function MarkdownMessage({
 }) {
   return (
     <div
-      className={`prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit ${className ?? ""}`}
+      className={`prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit prose-blockquote:text-inherit ${className ?? ""}`}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -34,4 +35,4 @@ export function MarkdownMessage({
       </ReactMarkdown>
     </div>
   );
-}
+});

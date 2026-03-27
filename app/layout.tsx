@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
+import { UserProvider } from "@/components/user-provider";
+import { getUser } from "@/lib/user";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,11 +9,13 @@ export const metadata: Metadata = {
   description: "A simple streaming LLM chat UI",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getUser();
+
   return (
     <html
       lang="en"
@@ -25,7 +29,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <UserProvider user={user}>
+            {children}
+          </UserProvider>
         </ThemeProvider>
       </body>
     </html>
