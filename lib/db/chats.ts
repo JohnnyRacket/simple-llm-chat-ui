@@ -134,6 +134,51 @@ export async function getActiveStreamId(
   return row?.active_stream_id ?? null;
 }
 
+export async function forkChat(
+  chatId: string,
+  userId: string
+): Promise<string | null> {
+  return db.transaction().execute(async (tx) => {
+    const source = await tx
+      .selectFrom("chats")
+      .select(["id", "title"])
+      .where("id", "=", chatId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+
+    if (!source) return null;
+
+    const newChat = await tx
+      .insertInto("chats")
+      .values({ user_id: userId, title: `Fork of ${source.title}` })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    const messages = await tx
+      .selectFrom("messages")
+      .select(["role", "content", "metadata"])
+      .where("chat_id", "=", chatId)
+      .orderBy("created_at", "asc")
+      .execute();
+
+    if (messages.length > 0) {
+      await tx
+        .insertInto("messages")
+        .values(
+          messages.map((m) => ({
+            chat_id: newChat.id,
+            role: m.role,
+            content: m.content,
+            metadata: m.metadata ? JSON.stringify(m.metadata) : undefined,
+          }))
+        )
+        .execute();
+    }
+
+    return newChat.id;
+  });
+}
+
 export async function deleteChat(
   chatId: string,
   userId: string

@@ -4,7 +4,7 @@ import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker, type ModelInfo } from "@/components/model-picker";
-import { Send } from "lucide-react";
+import { GitFork, Send } from "lucide-react";
 import type { UIMessage } from "ai";
 
 const PORTS = ["8080", "8081"];
@@ -32,6 +32,7 @@ export const ChatInput = memo(function ChatInput({
   isLoading,
   hasMessages,
   onSend,
+  onFork,
   showUsage,
   usage,
   serverInfo,
@@ -42,6 +43,7 @@ export const ChatInput = memo(function ChatInput({
   isLoading: boolean;
   hasMessages: boolean;
   onSend: (text: string) => void;
+  onFork?: () => void;
   showUsage: boolean;
   usage: NonNullable<ChatMessage["metadata"]>["usage"] | undefined;
   serverInfo: ServerInfo;
@@ -61,6 +63,18 @@ export const ChatInput = memo(function ChatInput({
   return (
     <div className={hasMessages ? "p-4 shrink-0" : ""}>
       <div className="mx-auto max-w-2xl rounded-xl border bg-background shadow-sm">
+        {onFork && (
+          <div className="flex items-center gap-1 px-3 pt-2">
+            <button
+              type="button"
+              onClick={onFork}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <GitFork className="h-3.5 w-3.5" />
+              Fork
+            </button>
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="flex items-stretch gap-2 p-3">
             <input

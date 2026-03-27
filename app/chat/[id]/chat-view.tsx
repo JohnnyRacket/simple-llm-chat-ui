@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { ResponseStats } from "@/components/response-stats";
@@ -16,6 +17,7 @@ export function ChatView({
   chatId: string;
   initialMessages: UIMessage[];
 }) {
+  const router = useRouter();
   const [selectedPort, setSelectedPort] = useState("8080");
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,6 +76,14 @@ export function ChatView({
     });
   }, []);
 
+  const handleFork = useCallback(async () => {
+    const res = await fetch(`/api/chats/${chatId}/fork`, { method: "POST" });
+    if (res.ok) {
+      const { chatId: newChatId } = await res.json();
+      router.push(`/chat/${newChatId}`);
+    }
+  }, [chatId, router]);
+
   const handleSend = useCallback(
     (text: string) => {
       sendMessage({ text });
@@ -99,6 +109,7 @@ export function ChatView({
       isLoading={isLoading}
       hasMessages={hasMessages}
       onSend={handleSend}
+      onFork={handleFork}
       showUsage={!!showUsage}
       usage={usage}
       serverInfo={serverInfo}
