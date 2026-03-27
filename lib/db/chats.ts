@@ -56,6 +56,24 @@ export async function listChats(
   return rows.map((r) => ({ id: r.id, title: r.title, updatedAt: r.updated_at }));
 }
 
+type MessagePart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string; state: "done" }
+  | {
+      type: `tool-${string}`;
+      toolCallId: string;
+      state: "output-available";
+      input: unknown;
+      output: unknown;
+    }
+  | {
+      type: `tool-${string}`;
+      toolCallId: string;
+      state: "output-error";
+      input: unknown;
+      errorText: string;
+    };
+
 export async function loadMessages(
   chatId: string,
   userId: string
@@ -64,7 +82,7 @@ export async function loadMessages(
     id: string;
     role: string;
     content: string;
-    parts: Array<{ type: "text"; text: string }>;
+    parts: MessagePart[];
     metadata: Record<string, unknown>;
     createdAt: Date;
   }>
@@ -84,14 +102,57 @@ export async function loadMessages(
     .orderBy("messages.created_at", "asc")
     .execute();
 
-  return rows.map((r) => ({
-    id: r.id,
-    role: r.role,
-    content: r.content,
-    parts: [{ type: "text" as const, text: r.content }],
-    metadata: r.metadata as Record<string, unknown>,
-    createdAt: r.created_at,
-  }));
+  return rows.map((r) => {
+    const meta = r.metadata as Record<string, unknown>;
+    const parts: MessagePart[] = [];
+
+    if (r.role === "assistant") {
+      if (typeof meta?.reasoningText === "string") {
+        parts.push({ type: "reasoning", text: meta.reasoningText, state: "done" });
+      }
+      const toolSteps = meta?.toolSteps as
+        | Array<{
+            toolCallId: string;
+            toolName: string;
+            input: unknown;
+            result?: { output?: unknown; errorText?: string };
+          }>
+        | undefined;
+      if (toolSteps) {
+        for (const step of toolSteps) {
+          const toolType = `tool-${step.toolName}` as `tool-${string}`;
+          if (step.result?.errorText) {
+            parts.push({
+              type: toolType,
+              toolCallId: step.toolCallId,
+              state: "output-error",
+              input: step.input,
+              errorText: step.result.errorText,
+            });
+          } else {
+            parts.push({
+              type: toolType,
+              toolCallId: step.toolCallId,
+              state: "output-available",
+              input: step.input,
+              output: step.result?.output,
+            });
+          }
+        }
+      }
+    }
+
+    parts.push({ type: "text", text: r.content });
+
+    return {
+      id: r.id,
+      role: r.role,
+      content: r.content,
+      parts,
+      metadata: meta,
+      createdAt: r.created_at,
+    };
+  });
 }
 
 export async function touchChat(chatId: string): Promise<void> {

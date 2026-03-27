@@ -4,7 +4,7 @@ import { memo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker, type ModelInfo } from "@/components/model-picker";
-import { GitFork, Paperclip, Send, X, FileText, Loader2 } from "lucide-react";
+import { Brain, GitFork, Globe, Paperclip, Send, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 const PORTS = ["8080", "8081"];
@@ -45,6 +45,10 @@ export const ChatInput = memo(function ChatInput({
   models,
   selectedPort,
   onSelectPort,
+  toolsEnabled,
+  onToggleTools,
+  reasoningEnabled,
+  onToggleReasoning,
 }: {
   isLoading: boolean;
   hasMessages: boolean;
@@ -56,6 +60,10 @@ export const ChatInput = memo(function ChatInput({
   models: ModelInfo[];
   selectedPort: string;
   onSelectPort: (port: string) => void;
+  toolsEnabled: boolean;
+  onToggleTools: (enabled: boolean) => void;
+  reasoningEnabled: boolean;
+  onToggleReasoning: (enabled: boolean) => void;
 }) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -132,6 +140,32 @@ export const ChatInput = memo(function ChatInput({
               Fork
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => onToggleTools(!toolsEnabled)}
+            aria-pressed={toolsEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              toolsEnabled
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Web search
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleReasoning(!reasoningEnabled)}
+            aria-pressed={reasoningEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              reasoningEnabled
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Brain className="h-3.5 w-3.5" />
+            Thinking
+          </button>
         </div>
 
         {/* Attached files */}

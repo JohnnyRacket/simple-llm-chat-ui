@@ -16,6 +16,8 @@ export default function Home() {
 
   const [sending, setSending] = useState(false);
   const [selectedPort, setSelectedPort] = useState("8080");
+  const [toolsEnabled, setToolsEnabled] = useState(false);
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -46,6 +48,8 @@ export default function Home() {
               parts: [{ type: "text", text }],
             },
             port: selectedPort,
+            enableTools: toolsEnabled,
+            enableReasoning: reasoningEnabled,
           }),
         });
 
@@ -57,7 +61,7 @@ export default function Home() {
         setSending(false);
       }
     },
-    [sending, selectedPort, router]
+    [sending, selectedPort, toolsEnabled, reasoningEnabled, router]
   );
 
   const handleDeleteChat = useCallback(
@@ -109,6 +113,10 @@ export default function Home() {
               models={models}
               selectedPort={selectedPort}
               onSelectPort={setSelectedPort}
+              toolsEnabled={toolsEnabled}
+              onToggleTools={setToolsEnabled}
+              reasoningEnabled={reasoningEnabled}
+              onToggleReasoning={setReasoningEnabled}
             />
           </div>
         </div>

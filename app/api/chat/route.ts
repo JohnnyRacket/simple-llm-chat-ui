@@ -2,6 +2,9 @@ import {
   streamText,
   convertToModelMessages,
   generateId,
+  wrapLanguageModel,
+  extractReasoningMiddleware,
+  stepCountIs,
   type UIMessage,
 } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -18,6 +21,7 @@ import {
 } from "@/lib/db/chats";
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
+import { webSearch, fetchPage } from "@/lib/tools";
 
 const BASE_HOST = "http://192.168.1.168";
 
@@ -65,7 +69,9 @@ export async function POST(req: Request) {
     id: incomingChatId,
     message,
     port = "8080",
-  }: { id?: string; message: UIMessage; port?: string } = await req.json();
+    enableTools = false,
+    enableReasoning = false,
+  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableReasoning?: boolean } = await req.json();
 
   const user = await getUser();
   const userContent =
@@ -108,16 +114,44 @@ export async function POST(req: Request) {
   }));
 
   const llm = createLLM(resolvedPort);
+  const baseModel = llm("model");
+  const model = enableReasoning
+    ? wrapLanguageModel({
+        model: baseModel,
+        middleware: extractReasoningMiddleware({ tagName: "think" }),
+      })
+    : baseModel;
+
+  const toolSystem =
+    "You are a helpful assistant with access to web search and page reading tools. " +
+    "When you use a tool, always read the results carefully and then provide a thorough answer to the user based on what you found. " +
+    "Never stop after a tool call without giving a final response.";
 
   const result = streamText({
-    model: llm("model"),
+    model,
+    ...(enableTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
-    async onFinish({ text, usage, providerMetadata }) {
+    ...(enableTools ? { tools: { webSearch, fetchPage }, stopWhen: stepCountIs(5) } : {}),
+    async onFinish({ text, steps, usage, providerMetadata, reasoningText }) {
       const t = (
         providerMetadata?.["local-llama"] as
           | Record<string, unknown>
           | undefined
       )?.timings as Record<string, number> | undefined;
+
+      const toolSteps =
+        steps.length > 1
+          ? steps.flatMap((s) =>
+              s.toolCalls.map((tc) => ({
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                input: (tc as { input?: unknown }).input,
+                result: s.toolResults.find(
+                  (tr) => tr.toolCallId === tc.toolCallId
+                ),
+              }))
+            )
+          : undefined;
 
       const metadata = {
         usage: {
@@ -129,6 +163,8 @@ export async function POST(req: Request) {
             ? (t.prompt_ms ?? 0) + (t.predicted_ms ?? 0)
             : null,
         },
+        ...(toolSteps ? { toolSteps } : {}),
+        ...(reasoningText ? { reasoningText } : {}),
       };
 
       await appendMessage(resolvedChatId, "assistant", text, metadata);
@@ -142,6 +178,7 @@ export async function POST(req: Request) {
   return result.toUIMessageStreamResponse({
     headers: { "X-Chat-Id": resolvedChatId },
     generateMessageId: generateId,
+    sendReasoning: enableReasoning,
     messageMetadata({ part }) {
       if (part.type === "finish-step") {
         const meta = (part as Record<string, unknown>).providerMetadata as

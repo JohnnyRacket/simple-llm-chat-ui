@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage, type ReasoningUIPart } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -9,6 +9,8 @@ import { MarkdownMessage } from "@/components/markdown-message";
 import { FileAttachment } from "@/components/file-attachment";
 import { ResponseStats } from "@/components/response-stats";
 import { ChatInput, PORTS, type ServerInfo, type ChatMessage } from "@/components/chat-input";
+import { ToolCallPart } from "@/components/tool-call-part";
+import { ReasoningPart } from "@/components/reasoning-part";
 import type { ModelInfo } from "@/components/model-picker";
 
 type MessageSegment =
@@ -49,10 +51,19 @@ export function ChatView({
 }) {
   const router = useRouter();
   const [selectedPort, setSelectedPort] = useState(port);
+  const [toolsEnabled, setToolsEnabled] = useState(false);
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
+
+  const selectedPortRef = useRef(selectedPort);
+  const toolsEnabledRef = useRef(toolsEnabled);
+  const reasoningEnabledRef = useRef(reasoningEnabled);
+  useEffect(() => { selectedPortRef.current = selectedPort; }, [selectedPort]);
+  useEffect(() => { toolsEnabledRef.current = toolsEnabled; }, [toolsEnabled]);
+  useEffect(() => { reasoningEnabledRef.current = reasoningEnabled; }, [reasoningEnabled]);
 
   const transport = useMemo(
     () =>
@@ -62,11 +73,14 @@ export function ChatView({
           body: {
             id,
             message: messages[messages.length - 1],
-            port: selectedPort,
+            port: selectedPortRef.current,
+            enableTools: toolsEnabledRef.current,
+            enableReasoning: reasoningEnabledRef.current,
           },
         }),
       }),
-    [selectedPort]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
   const { messages, sendMessage, status } = useChat<ChatMessage>({
@@ -146,6 +160,10 @@ export function ChatView({
       models={models}
       selectedPort={selectedPort}
       onSelectPort={setSelectedPort}
+      toolsEnabled={toolsEnabled}
+      onToggleTools={setToolsEnabled}
+      reasoningEnabled={reasoningEnabled}
+      onToggleReasoning={setReasoningEnabled}
     />
   );
 
@@ -192,6 +210,22 @@ export function ChatView({
                               ) : (
                                 <MarkdownMessage key={`${i}-${j}`} content={seg.text} />
                               )
+                            );
+                          }
+                          if (part.type === "reasoning") {
+                            return (
+                              <ReasoningPart
+                                key={i}
+                                part={part as ReasoningUIPart}
+                              />
+                            );
+                          }
+                          if (part.type.startsWith("tool-")) {
+                            return (
+                              <ToolCallPart
+                                key={i}
+                                part={part as Parameters<typeof ToolCallPart>[0]["part"]}
+                              />
                             );
                           }
                           return null;
