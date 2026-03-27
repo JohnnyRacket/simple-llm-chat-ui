@@ -4,6 +4,11 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { webSearch, fetchPage } from "./index";
 
 const BASE_HOST = "http://192.168.1.168";
+const AGENT_HEARTBEAT_MS = 3_000;
+const MAX_RETRIES = 2;
+const QUEUED_MESSAGE = "Queued...";
+const STARTING_MESSAGE = "Starting sub-agent...";
+const RUNNING_MESSAGE = "Sub-agent still running...";
 
 function getRolePrompt(role: string, hasTools: boolean): string {
   const toolHint = hasTools ? " using web search and page reading as needed" : "";
@@ -34,11 +39,53 @@ export type ParallelAgentsOutput = {
   agents: SubAgentOutput[];
 };
 
+type AgentProgressEvent =
+  | { type: "heartbeat" }
+  | { type: "result"; result: SubAgentOutput };
+
+type ParallelAgentProgressEvent =
+  | { type: "heartbeat" }
+  | { type: "result"; index: number; result: SubAgentOutput };
+
+function createPendingAgentOutput(
+  task: string,
+  role: string,
+  result: string
+): SubAgentOutput {
+  return {
+    role,
+    task,
+    result,
+    steps: 0,
+    toolCallCount: 0,
+  };
+}
+
+function waitForHeartbeat(ms: number) {
+  return new Promise<{ type: "heartbeat" }>((resolve) => {
+    setTimeout(() => resolve({ type: "heartbeat" }), ms);
+  });
+}
+
+function getHeartbeatMessage(previousMessage?: string) {
+  return previousMessage === QUEUED_MESSAGE || previousMessage == null
+    ? STARTING_MESSAGE
+    : RUNNING_MESSAGE;
+}
+
+function createHeartbeatRace<T>(promise: Promise<T>) {
+  return Promise.race<T | { type: "heartbeat" }>([
+    promise,
+    waitForHeartbeat(AGENT_HEARTBEAT_MS),
+  ]);
+}
+
 async function runSubAgent(
   task: string,
   role: string,
   port: string,
-  enableTools: boolean
+  enableTools: boolean,
+  abortSignal?: AbortSignal
 ): Promise<SubAgentOutput> {
   const subTools = enableTools ? { webSearch, fetchPage } : undefined;
   const provider = createOpenAICompatible({
@@ -46,30 +93,41 @@ async function runSubAgent(
     baseURL: `${BASE_HOST}:${port}/v1`,
     apiKey: "not-needed",
   });
-  try {
-    const result = await generateText({
-      model: provider("model"),
-      system: getRolePrompt(role, enableTools),
-      prompt: task,
-      ...(subTools ? { tools: subTools, stopWhen: stepCountIs(6) } : {}),
-    });
-    return {
-      role,
-      task,
-      result: result.text,
-      steps: result.steps.length,
-      toolCallCount: result.steps.reduce((acc, s) => acc + s.toolCalls.length, 0),
-    };
-  } catch (err) {
-    return {
-      role,
-      task,
-      result: "",
-      steps: 0,
-      toolCallCount: 0,
-      error: err instanceof Error ? err.message : String(err),
-    };
+
+  let lastEmpty: SubAgentOutput | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (abortSignal?.aborted) break;
+    try {
+      const result = await generateText({
+        model: provider("model"),
+        system: getRolePrompt(role, enableTools),
+        prompt: task,
+        abortSignal,
+        ...(subTools ? { tools: subTools, stopWhen: stepCountIs(6) } : {}),
+      });
+      const output: SubAgentOutput = {
+        role,
+        task,
+        result: result.text,
+        steps: result.steps.length,
+        toolCallCount: result.steps.reduce((acc, s) => acc + s.toolCalls.length, 0),
+      };
+      if (result.text.trim().length > 0) return output;
+      lastEmpty = output;
+    } catch (err) {
+      return {
+        role,
+        task,
+        result: "",
+        steps: 0,
+        toolCallCount: 0,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
+
+  return lastEmpty ?? { role, task, result: "", steps: 0, toolCallCount: 0 };
 }
 
 const agentTaskSchema = z.object({
@@ -86,8 +144,28 @@ export function createSubAgentTool(port: string, enableTools: boolean) {
       "Spin up a single isolated sub-agent to complete one focused task. " +
       "Use this for a single task. For multiple parallel tasks, use parallelAgents instead.",
     inputSchema: agentTaskSchema,
-    execute: async ({ task, role }): Promise<SubAgentOutput> =>
-      runSubAgent(task, role, port, enableTools),
+    execute: async function* ({ task, role }, { abortSignal }) {
+      const resultPromise: Promise<AgentProgressEvent> = runSubAgent(
+        task,
+        role,
+        port,
+        enableTools,
+        abortSignal
+      ).then((result) => ({ type: "result", result }));
+      let lastMessage: string | undefined;
+
+      while (true) {
+        const next = await createHeartbeatRace(resultPromise);
+
+        if (next.type === "result") {
+          yield next.result;
+          return;
+        }
+
+        lastMessage = getHeartbeatMessage(lastMessage);
+        yield createPendingAgentOutput(task, role, lastMessage);
+      }
+    },
   });
 }
 
@@ -107,11 +185,48 @@ export function createParallelAgentsTool(port: string, enableTools: boolean) {
         .max(8)
         .describe("The list of agents to spawn in parallel. Must have at least 2 tasks."),
     }),
-    execute: async ({ agents }): Promise<ParallelAgentsOutput> => {
-      const results = await Promise.all(
-        agents.map(({ task, role }) => runSubAgent(task, role, port, enableTools))
+    execute: async function* ({ agents }, { abortSignal }) {
+      const results = agents.map(({ task, role }) =>
+        createPendingAgentOutput(task, role, QUEUED_MESSAGE)
       );
-      return { agents: results };
+      yield { agents: [...results] };
+
+      const pending = agents.map(({ task, role }, index) => ({
+        index,
+        promise: runSubAgent(task, role, port, enableTools, abortSignal).then((result) => ({
+          type: "result" as const,
+          index,
+          result,
+        })),
+      }));
+
+      while (pending.length > 0) {
+        const next = await createHeartbeatRace<ParallelAgentProgressEvent>(
+          Promise.race(pending.map(({ promise }) => promise))
+        );
+
+        if (next.type === "heartbeat") {
+          for (const { index } of pending) {
+            const agent = results[index];
+            if (agent.steps === 0 && !agent.error) {
+              results[index] = createPendingAgentOutput(
+                agent.task,
+                agent.role,
+                getHeartbeatMessage(agent.result)
+              );
+            }
+          }
+          yield { agents: [...results] };
+          continue;
+        }
+
+        results[next.index] = next.result;
+        const settledIndex = pending.findIndex((entry) => entry.index === next.index);
+        if (settledIndex >= 0) {
+          pending.splice(settledIndex, 1);
+        }
+        yield { agents: [...results] };
+      }
     },
   });
 }

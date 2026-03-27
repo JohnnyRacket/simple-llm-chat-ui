@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, FileText, Globe, Loader2 } from "lucide-react";
+import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Download, FileText, Globe, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 type ToolPart = {
@@ -10,6 +10,7 @@ type ToolPart = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
+  preliminary?: boolean;
 };
 
 type SubAgentOutput = {
@@ -79,10 +80,45 @@ function ParallelAgentsResult({ output }: { output: ParallelAgentsOutput }) {
   );
 }
 
+function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
+  return (
+    <div className="space-y-1.5">
+      {output.agents.map((agent, i) => {
+        const isPending = agent.steps === 0 && !agent.error;
+        return (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            {isPending ? (
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-50" />
+            ) : agent.error ? (
+              <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
+            ) : (
+              <Check className="h-3 w-3 shrink-0 text-green-500" />
+            )}
+            <span className="shrink-0 text-muted-foreground">[{agent.role}]</span>
+            <span className="flex-1 truncate opacity-80">
+              {agent.task.slice(0, 80)}{agent.task.length > 80 ? "…" : ""}
+            </span>
+            {isPending && (
+              <span className="shrink-0 text-muted-foreground/60 text-[10px] italic">{agent.result}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type SearchResult = { title: string; url: string; snippet: string };
 type SearchOutput = { results: SearchResult[] };
 type FetchOutput = { title: string; content: string };
 type DocumentOutput = { filename: string; content: string; summary: string };
+type ToolDisplayState = {
+  toolName: string;
+  isPending: boolean;
+  isError: boolean;
+  hasOutput: boolean;
+  isDone: boolean;
+};
 
 function DocumentCard({ output }: { output: DocumentOutput }) {
   const filename = output.filename.endsWith(".md") ? output.filename : `${output.filename}.md`;
@@ -142,38 +178,65 @@ function PageContent({ output }: { output: FetchOutput }) {
   );
 }
 
-export function ToolCallPart({ part }: { part: ToolPart }) {
-  const [expanded, setExpanded] = useState(false);
-  const isPending = part.state === "input-streaming" || part.state === "input-available";
-  const isError = part.state === "output-error";
-  const isDone = part.state === "output-available";
+function getToolDisplayState(part: ToolPart): ToolDisplayState {
   const toolName = part.type.replace(/^tool-/, "");
+  const isAgentTool = toolName === "subAgent" || toolName === "parallelAgents";
+  const isPreliminary = part.preliminary === true;
+  const hasOutput = part.state === "output-available";
 
-  let label: string;
-  if (toolName === "webSearch") {
-    const q = (part.input as { query?: string } | undefined)?.query;
-    label = q ? `Search: ${q}` : "Searching…";
-  } else if (toolName === "fetchPage") {
-    const u = (part.input as { url?: string } | undefined)?.url;
-    label = u ? `Read: ${u}` : "Reading page…";
-  } else if (toolName === "subAgent") {
-    const i = part.input as { role?: string; task?: string } | undefined;
-    const roleLabel = i?.role ? `[${i.role}]` : "";
-    const preview = (i?.task ?? "").slice(0, 60);
-    label = `Sub-agent ${roleLabel}: ${preview}${(i?.task?.length ?? 0) > 60 ? "…" : ""}`;
-  } else if (toolName === "parallelAgents") {
-    const i = part.input as { agents?: unknown[] } | undefined;
-    const count = i?.agents?.length ?? 0;
-    const done = part.state === "output-available";
-    label = done ? `Parallel agents (${count} completed)` : `Spawning ${count} agents…`;
-  } else if (toolName === "createDocument") {
-    const i = part.input as { filename?: string } | undefined;
-    label = i?.filename ? `Document: ${i.filename}.md` : "Creating document…";
-  } else {
-    label = toolName;
+  return {
+    toolName,
+    isPending:
+      part.state === "input-streaming" ||
+      part.state === "input-available" ||
+      (isAgentTool && hasOutput && isPreliminary),
+    isError: part.state === "output-error",
+    hasOutput,
+    isDone: hasOutput && !isPreliminary,
+  };
+}
+
+function getToolLabel(part: ToolPart, state: ToolDisplayState) {
+  if (state.toolName === "webSearch") {
+    const query = (part.input as { query?: string } | undefined)?.query;
+    return query ? `Search: ${query}` : "Searching…";
   }
 
-  if (toolName === "createDocument" && isDone) {
+  if (state.toolName === "fetchPage") {
+    const url = (part.input as { url?: string } | undefined)?.url;
+    return url ? `Read: ${url}` : "Reading page…";
+  }
+
+  if (state.toolName === "subAgent") {
+    const input = part.input as { role?: string; task?: string } | undefined;
+    const roleLabel = input?.role ? ` [${input.role}]` : "";
+    const task = input?.task ?? "";
+    if (!task) return "Starting sub-agent…";
+    const preview = task.slice(0, 60);
+    return `Sub-agent${roleLabel}: ${preview}${task.length > 60 ? "…" : ""}`;
+  }
+
+  if (state.toolName === "parallelAgents") {
+    const input = part.input as { agents?: unknown[] } | undefined;
+    const count = input?.agents?.length ?? 0;
+    if (state.isDone) return `Parallel agents (${count} completed)`;
+    return count > 0 ? `Running ${count} sub-agents…` : "Starting sub-agents…";
+  }
+
+  if (state.toolName === "createDocument") {
+    const input = part.input as { filename?: string } | undefined;
+    return input?.filename ? `Document: ${input.filename}.md` : "Creating document…";
+  }
+
+  return state.toolName;
+}
+
+export function ToolCallPart({ part }: { part: ToolPart }) {
+  const [expanded, setExpanded] = useState(false);
+  const state = getToolDisplayState(part);
+  const label = getToolLabel(part, state);
+
+  if (state.toolName === "createDocument" && state.isDone) {
     return (
       <div className="my-1">
         <DocumentCard output={part.output as DocumentOutput} />
@@ -185,40 +248,46 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
     <div className="my-1 rounded-md border border-foreground/10 bg-background/50 text-foreground">
       <button
         type="button"
-        onClick={() => isDone && setExpanded((v) => !v)}
-        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors rounded-md ${isDone ? "hover:bg-foreground/5 cursor-pointer" : "cursor-default"}`}
+        onClick={() => state.isDone && setExpanded((v) => !v)}
+        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors rounded-md ${state.isDone ? "hover:bg-foreground/5 cursor-pointer" : "cursor-default"}`}
       >
-        {isPending ? (
+        {state.isPending ? (
           <Loader2 className="h-4 w-4 shrink-0 opacity-70 animate-spin" />
-        ) : isError ? (
+        ) : state.isError ? (
           <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
-        ) : toolName === "subAgent" || toolName === "parallelAgents" ? (
+        ) : state.toolName === "subAgent" || state.toolName === "parallelAgents" ? (
           <Bot className="h-4 w-4 shrink-0 opacity-70" />
-        ) : toolName === "createDocument" ? (
+        ) : state.toolName === "createDocument" ? (
           <FileText className="h-4 w-4 shrink-0 opacity-70" />
         ) : (
           <Globe className="h-4 w-4 shrink-0 opacity-70" />
         )}
         <span className="flex-1 truncate font-medium opacity-90">{label}</span>
-        {isDone && (
+        {state.isDone && (
           expanded ? (
             <ChevronUp className="h-4 w-4 shrink-0 opacity-70" />
           ) : (
             <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
           )
         )}
-        {isError && <span className="text-xs text-destructive">failed</span>}
+        {state.isError && <span className="text-xs text-destructive">failed</span>}
       </button>
 
-      {expanded && isDone && (
+      {state.toolName === "parallelAgents" && state.isPending && state.hasOutput && (
         <div className="border-t border-foreground/10 px-3 py-2">
-          {toolName === "parallelAgents" ? (
+          <ParallelAgentsPending output={part.output as ParallelAgentsOutput} />
+        </div>
+      )}
+
+      {expanded && state.isDone && (
+        <div className="border-t border-foreground/10 px-3 py-2">
+          {state.toolName === "parallelAgents" ? (
             <ParallelAgentsResult output={part.output as ParallelAgentsOutput} />
-          ) : toolName === "subAgent" ? (
+          ) : state.toolName === "subAgent" ? (
             <SubAgentResult output={part.output as SubAgentOutput} />
-          ) : toolName === "webSearch" ? (
+          ) : state.toolName === "webSearch" ? (
             <SearchResults output={part.output as SearchOutput} />
-          ) : toolName === "fetchPage" ? (
+          ) : state.toolName === "fetchPage" ? (
             <PageContent output={part.output as FetchOutput} />
           ) : (
             <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
@@ -228,7 +297,7 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
         </div>
       )}
 
-      {isError && (
+      {state.isError && (
         <div className="border-t border-foreground/10 px-3 py-2">
           <p className="text-xs text-destructive">{part.errorText ?? "Tool call failed"}</p>
         </div>

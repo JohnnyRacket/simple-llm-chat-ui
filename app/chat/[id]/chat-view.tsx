@@ -12,6 +12,7 @@ import { ChatInput, type ChatMessage } from "@/components/chat-input";
 import { useChatSettings } from "@/components/chat-settings-provider";
 import { ToolCallPart } from "@/components/tool-call-part";
 import { ReasoningPart } from "@/components/reasoning-part";
+import { useChatRecovery } from "@/hooks/use-chat-recovery";
 
 type MessageSegment =
   | { type: "text"; text: string }
@@ -40,6 +41,14 @@ function parseMessageParts(text: string): MessageSegment[] {
   return segments;
 }
 
+function getLastAssistantMessage(messages: ChatMessage[]) {
+  return [...messages].reverse().find((message) => message.role === "assistant");
+}
+
+function messagesMatch(left: ChatMessage[], right: ChatMessage[]) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function ChatView({
   chatId,
   initialMessages,
@@ -50,7 +59,16 @@ export function ChatView({
   port: string;
 }) {
   const router = useRouter();
-  const { selectedPort, setSelectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled } = useChatSettings();
+  const {
+    selectedPort,
+    setSelectedPort,
+    toolsEnabled,
+    agentsEnabled,
+    agentPort,
+    reasoningEnabled,
+    createDocumentEnabled,
+    serverInfo,
+  } = useChatSettings();
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
@@ -92,21 +110,84 @@ export function ChatView({
           },
         }),
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
-  const { messages, sendMessage, status } = useChat<ChatMessage>({
+  const {
+    messages,
+    sendMessage,
+    setMessages,
+    resumeStream,
+    clearError,
+    stop,
+    status,
+  } = useChat<ChatMessage>({
     id: chatId,
     messages: initialMessages as ChatMessage[],
     transport,
-    resume: true,
+    resume: false,
   });
 
-  const isLoading = status === "submitted" || status === "streaming";
+  const finalizeFromDbIfStreamEnded = useCallback(async () => {
+    const streamProbe = await fetch(`/api/chat/${chatId}/stream`, {
+      method: "HEAD",
+      cache: "no-store",
+    });
+
+    if (streamProbe.status !== 204) {
+      return;
+    }
+
+    const messagesRes = await fetch(`/api/chats/${chatId}/messages`, {
+      cache: "no-store",
+    });
+
+    if (!messagesRes.ok) {
+      return;
+    }
+
+    const latestMessages = (await messagesRes.json()) as ChatMessage[];
+    if (!messagesMatch(latestMessages, messages)) {
+      setMessages(latestMessages);
+    }
+    clearError();
+  }, [chatId, clearError, messages, setMessages]);
+
+  const resumeWithFallback = useCallback(async () => {
+    await resumeStream();
+    await finalizeFromDbIfStreamEnded();
+  }, [finalizeFromDbIfStreamEnded, resumeStream]);
+
+  const didInitialResumeRef = useRef(false);
+  useEffect(() => {
+    if (didInitialResumeRef.current) return;
+    didInitialResumeRef.current = true;
+    void resumeWithFallback();
+  }, [resumeWithFallback]);
+
+  useChatRecovery({
+    messages,
+    status,
+    resumeStream: resumeWithFallback,
+    finalizeStream: finalizeFromDbIfStreamEnded,
+  });
+
+  const isLoading =
+    status === "submitted" || status === "streaming" || status === "error";
   const hasMessages = messages.length > 0;
 
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastMessage = messages[messages.length - 1];
+  const lastAssistantIsEmpty =
+    lastMessage?.role === "assistant" &&
+    !lastMessage.parts.some(
+      (p) =>
+        (p.type === "text" && (p as { text: string }).text.trim().length > 0) ||
+        p.type === "reasoning" ||
+        p.type.startsWith("tool-")
+    );
+  const showLoader = isLoading;
+
+  const lastAssistant = getLastAssistantMessage(messages);
   const usage = lastAssistant?.metadata?.usage;
 
   const handleScroll = useCallback(() => {
@@ -152,7 +233,11 @@ export function ChatView({
     [sendMessage]
   );
 
-  const { serverInfo } = useChatSettings();
+  const handleStop = useCallback(() => {
+    stop();
+    void fetch(`/api/chat/${chatId}/stream`, { method: "DELETE" });
+  }, [stop, chatId]);
+
   const showUsage = usage && serverInfo.contextSize > 0;
 
   const inputIsland = (
@@ -160,6 +245,7 @@ export function ChatView({
       isLoading={isLoading}
       hasMessages={hasMessages}
       onSend={handleSend}
+      onStop={handleStop}
       onFork={handleFork}
       onCompactFork={handleCompactFork}
       isCompactForking={isCompactForking}
@@ -179,9 +265,12 @@ export function ChatView({
           <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-4xl space-y-4">
               {messages.map((message, idx) => {
+                const isLastMessage = idx === messages.length - 1;
+                if (isLastMessage && lastAssistantIsEmpty && isLoading) return null;
+
                 const isCompleted =
                   message.role === "assistant" &&
-                  (status === "ready" || idx !== messages.length - 1);
+                  (status === "ready" || !isLastMessage);
                 const statsUsage = isCompleted ? message.metadata?.usage : null;
 
                 return (
@@ -238,6 +327,15 @@ export function ChatView({
                 );
               })}
 
+              {showLoader && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg px-4 py-3 flex gap-1 items-center">
+                    <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" />
+                  </div>
+                </div>
+              )}
 
               <div ref={scrollRef} />
             </div>

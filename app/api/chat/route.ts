@@ -19,6 +19,7 @@ import {
 } from "@/lib/db/chats";
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
+import { registerAbort, removeAbort } from "@/lib/abort-registry";
 import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument } from "@/lib/tools";
 import { createLLM } from "@/lib/llm";
 
@@ -129,8 +130,12 @@ export async function POST(req: Request) {
 
   const toolSystem = enableAgents ? agentSystem : webToolSystem;
 
+  const abortController = new AbortController();
+  registerAbort(resolvedChatId, abortController);
+
   const result = streamText({
     model,
+    abortSignal: abortController.signal,
     ...(hasTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
     ...(hasTools ? { tools, stopWhen: stepCountIs(8) } : {}),
@@ -173,13 +178,18 @@ export async function POST(req: Request) {
       await appendMessage(resolvedChatId, "assistant", text, metadata);
       await clearActiveStreamId(resolvedChatId);
       await touchChat(resolvedChatId);
+      removeAbort(resolvedChatId);
     },
   });
 
   let timings: Record<string, number> | null = null;
 
   return result.toUIMessageStreamResponse({
-    headers: { "X-Chat-Id": resolvedChatId },
+    headers: {
+      "X-Chat-Id": resolvedChatId,
+      "Content-Encoding": "none",
+      "Cache-Control": "no-cache, no-transform",
+    },
     generateMessageId: generateId,
     sendReasoning: enableReasoning,
     messageMetadata({ part }) {

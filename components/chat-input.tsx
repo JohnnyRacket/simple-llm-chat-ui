@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker } from "@/components/model-picker";
 import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
-import { Bot, Brain, GitFork, Minimize2, Paperclip, Send, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { Bot, Brain, GitFork, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 type ChatMessage = UIMessage<{
@@ -30,6 +30,7 @@ export const ChatInput = memo(function ChatInput({
   isLoading,
   hasMessages,
   onSend,
+  onStop,
   onFork,
   onCompactFork,
   isCompactForking,
@@ -39,6 +40,7 @@ export const ChatInput = memo(function ChatInput({
   isLoading: boolean;
   hasMessages: boolean;
   onSend: (text: string) => void;
+  onStop?: () => void;
   onFork?: () => void;
   onCompactFork?: () => void;
   isCompactForking?: boolean;
@@ -59,6 +61,7 @@ export const ChatInput = memo(function ChatInput({
     createDocumentEnabled,
     setCreateDocumentEnabled,
     serverInfo,
+    modelsInfo,
     models,
   } = useChatSettings();
   const [input, setInput] = useState("");
@@ -169,21 +172,25 @@ export const ChatInput = memo(function ChatInput({
           </button>
           {agentsEnabled && (
             <div className="inline-flex items-center gap-1 rounded-md bg-purple-100 dark:bg-purple-900/40 px-1.5 py-1">
-              <span className="text-xs text-purple-600 dark:text-purple-300 opacity-70">model:</span>
-              {PORTS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setAgentPort(p)}
-                  className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
-                    agentPort === p
-                      ? "bg-purple-600 text-white"
-                      : "text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800"
-                  }`}
-                >
-                  :{p}
-                </button>
-              ))}
+              <span className="text-xs text-purple-600 dark:text-purple-300 opacity-70">agents:</span>
+              {PORTS.map((p) => {
+                const info = modelsInfo[p];
+                const label = info?.paramsB ? `${info.paramsB}B` : `:${p}`;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setAgentPort(p)}
+                    className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
+                      agentPort === p
+                        ? "bg-purple-600 text-white"
+                        : "text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           )}
           <button
@@ -275,10 +282,21 @@ export const ChatInput = memo(function ChatInput({
               className="flex-1 bg-transparent px-2 py-1 text-sm text-foreground focus:outline-none"
               autoFocus
             />
-            <Button type="submit" className="h-auto px-3" disabled={!canSend}>
-              <Send className="h-4 w-4" />
-              <span className="sr-only">Send</span>
-            </Button>
+            {isLoading ? (
+              <Button
+                type="button"
+                className="h-auto px-3"
+                onClick={onStop}
+              >
+                <Square className="h-4 w-4" />
+                <span className="sr-only">Stop</span>
+              </Button>
+            ) : (
+              <Button type="submit" className="h-auto px-3" disabled={!canSend}>
+                <Send className="h-4 w-4" />
+                <span className="sr-only">Send</span>
+              </Button>
+            )}
           </div>
         </form>
         {(showUsage || models.length > 0) && (
