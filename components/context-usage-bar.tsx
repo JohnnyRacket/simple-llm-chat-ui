@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { Layers, TriangleAlert } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -32,13 +32,6 @@ export function ContextUsageBar({
         ? "stroke-yellow-500"
         : "stroke-green-500";
 
-  const barColor =
-    percentage > 60
-      ? "bg-red-500"
-      : percentage > 40
-        ? "bg-yellow-500"
-        : "bg-green-500";
-
   const dashOffset = CIRCUMFERENCE * (1 - percentage / 100);
 
   return (
@@ -46,8 +39,8 @@ export function ContextUsageBar({
       <div className="flex-1 min-w-0 max-w-[140px] sm:max-w-none overflow-hidden">{modelPicker}</div>
       {showBar && (
         <>
-          {/* Mobile: progress wheel + % */}
-          <div className="flex sm:hidden items-center gap-1.5 shrink-0 ml-auto">
+          {/* Progress wheel + % */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
             <Tooltip>
               <TooltipTrigger asChild>
                 <svg width="18" height="18" viewBox="0 0 18 18" className="-rotate-90">
@@ -72,30 +65,7 @@ export function ContextUsageBar({
                 {totalTokens.toLocaleString()} / {contextSize.toLocaleString()} tokens
               </TooltipContent>
             </Tooltip>
-            <span className="tabular-nums">{Math.round(percentage)}%</span>
-            {percentage > 60 && (
-              <Tooltip>
-                <TooltipTrigger className="text-red-500">
-                  <TriangleAlert className="size-3.5" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  High context usage can cause degraded performance
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          {/* Desktop: bar + token count */}
-          <div className="hidden sm:flex items-center gap-3 min-w-0 ml-auto">
-            <div className="bg-muted rounded-full h-1.5 overflow-hidden w-16">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-                style={{ width: `${percentage}%` }}
-              />
-            </div>
-            <span className="whitespace-nowrap">
-              {totalTokens.toLocaleString()} / {contextSize.toLocaleString()}
-            </span>
+            <span className="tabular-nums flex items-center gap-1">{Math.round(percentage)}% <Layers className="size-3 opacity-50" /> {Math.round(contextSize / 1000)}K</span>
             {percentage > 60 && (
               <Tooltip>
                 <TooltipTrigger className="text-red-500">

@@ -107,7 +107,8 @@ function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
 type WidgetOutput = { html: string; title: string };
 type SearchResult = { title: string; url: string; snippet: string };
 type SearchOutput = { results: SearchResult[] };
-type FetchOutput = { title: string; content: string };
+type FetchLink = { text: string; href: string };
+type FetchOutput = { title: string; content: string; links?: FetchLink[] };
 type DocumentOutput = { filename: string; content: string; summary: string };
 type CodeExecutionOutput = { stdout: string; stderr: string; exitCode: number; language: string; truncated?: boolean };
 type ToolDisplayState = {
@@ -198,10 +199,52 @@ function SearchResults({ output }: { output: SearchOutput }) {
 }
 
 function PageContent({ output }: { output: FetchOutput }) {
+  const [linksOpen, setLinksOpen] = useState(false);
+  const links = output.links ?? [];
   return (
-    <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground font-mono">
-      {output.content.trim()}
-    </pre>
+    <div className="space-y-2">
+      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground font-mono">
+        {output.content.trim()}
+      </pre>
+      {links.length > 0 && (
+        <div className="rounded border border-foreground/10">
+          <button
+            type="button"
+            onClick={() => setLinksOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-foreground/5 transition-colors rounded"
+          >
+            <Globe className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span className="flex-1 font-medium opacity-80">
+              {links.length} link{links.length !== 1 ? "s" : ""} found
+            </span>
+            {linksOpen ? (
+              <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            )}
+          </button>
+          {linksOpen && (
+            <div className="border-t border-foreground/10 px-3 py-2 max-h-48 overflow-y-auto">
+              <ol className="space-y-1 text-xs">
+                {links.map((link, i) => (
+                  <li key={i} className="space-y-0.5">
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-blue-600 dark:text-blue-400 hover:underline block truncate"
+                    >
+                      {link.text}
+                    </a>
+                    <p className="text-muted-foreground/60 truncate text-[10px]">{link.href}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -268,6 +311,39 @@ function getToolLabel(part: ToolPart, state: ToolDisplayState) {
   return state.toolName;
 }
 
+function ExecuteCodePending({ part }: { part: ToolPart }) {
+  const input = part.input as { language?: string; code?: string } | undefined;
+  const language = input?.language ?? "code";
+  const code = input?.code ?? "";
+  const isStreaming = part.state === "input-streaming";
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isStreaming) bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [code, isStreaming]);
+
+  return (
+    <div className="my-1 rounded-md border border-foreground/10 bg-background/50 text-foreground overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
+        <span className="flex-1 truncate text-sm font-medium opacity-90">
+          {isStreaming ? `Writing ${language}…` : `Running ${language}…`}
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground/50 font-mono">{code.length} chars</span>
+      </div>
+      {code && (
+        <div className="border-t border-foreground/10 bg-foreground/[0.02] px-3 py-2 max-h-64 overflow-y-auto">
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/50 font-medium">{language}</p>
+          <pre className="whitespace-pre-wrap break-all text-[11px] text-muted-foreground/60 font-mono leading-relaxed">
+            {code}
+            <div ref={bottomRef} />
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WidgetStreamingPreview({ part }: { part: ToolPart }) {
   const input = part.input as { html?: string; title?: string } | undefined;
   const html = input?.html ?? "";
@@ -319,6 +395,10 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
 
   if (state.toolName === "renderWidget" && state.isPending) {
     return <WidgetStreamingPreview part={part} />;
+  }
+
+  if (state.toolName === "executeCode" && state.isPending) {
+    return <ExecuteCodePending part={part} />;
   }
 
   return (

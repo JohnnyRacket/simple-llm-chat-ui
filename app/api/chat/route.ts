@@ -158,11 +158,15 @@ export async function POST(req: Request) {
       enableWidget ? "an interactive widget renderer" : null,
     ].filter(Boolean).join(", ")}. ` +
     "When you use a tool, always read the results carefully and then provide a thorough answer to the user based on what you found. " +
+    "When researching factual claims, always fetch and cross-reference at least 2-3 independent sources before answering — do not rely on a single page. If sources conflict, note the disagreement. " +
     (enableCreateDocument
       ? "When asked to produce a report, document, or written artifact, use the createDocument tool with the full markdown content, then follow up with a brief high-level summary. "
       : "") +
     (enableProgrammatic
-      ? "When asked to compute, calculate, or process data, prefer using the executeCode tool. "
+      ? "When asked to compute, calculate, or process data, prefer using the executeCode tool. " +
+        "CRITICAL: When the conversation contains document or file content (e.g. a PDF or pasted text) that you need to process with code, " +
+        "always pass that content as the inputData parameter — it will be available at /data/input.txt inside the container. " +
+        "Never try to open a file by its original name and never embed large text strings directly into the code. "
       : "") +
     (enableWidget
       ? "When a visual or interactive component would help the user — such as a chart, calculator, data table, timeline, or game — use the renderWidget tool. " +

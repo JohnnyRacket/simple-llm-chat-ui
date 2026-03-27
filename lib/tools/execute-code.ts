@@ -4,6 +4,7 @@ import { execFile } from "child_process";
 import { mkdtemp, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { logDebug } from "@/lib/debug-chat-stream";
 
 const MAX_OUTPUT_CHARS = 8_000;
 const TIMEOUT_MS = 30_000;
@@ -22,6 +23,8 @@ function truncate(s: string) {
 
 async function runInDocker(language: keyof typeof DOCKER_CONFIG, code: string, inputData?: string) {
   const config = DOCKER_CONFIG[language];
+  const startMs = Date.now();
+  logDebug("[execute-code]", "start", { language, codeLength: code.length, hasInputData: inputData !== undefined });
   const tmpDir = await mkdtemp(join(tmpdir(), "llm-sandbox-"));
   try {
     await writeFile(join(tmpDir, config.filename), code, "utf8");
@@ -61,6 +64,14 @@ async function runInDocker(language: keyof typeof DOCKER_CONFIG, code: string, i
     );
     const out = truncate(stdout);
     const err = truncate(stderr);
+    logDebug("[execute-code]", "finish", {
+      language,
+      exitCode,
+      stdoutLength: stdout.length,
+      stderrLength: stderr.length,
+      durationMs: Date.now() - startMs,
+      truncated: out.truncated || err.truncated,
+    });
     return {
       stdout: out.text,
       stderr: err.text,
@@ -77,12 +88,14 @@ export const executeCode = tool({
   description:
     "Execute code in a sandboxed Docker container with no network access. " +
     "Supports Python, JavaScript (Node.js), and Bash. Timeout: 30s. " +
-    "If inputData is provided it is written to /data/input.txt inside the container. " +
-    "Use this for calculations, data processing, or any computation.",
+    "IMPORTANT: When you need to process text from the conversation (e.g. a document, PDF content, or any large string), " +
+    "pass it as inputData — it will be written to /data/input.txt and your script should read from that path. " +
+    "Never try to open files by their original name and never embed large strings directly in code. " +
+    "Use this for calculations, data processing, text analysis, or any computation.",
   inputSchema: z.object({
     language: z.enum(["python", "javascript", "bash"]).describe("Language to execute"),
-    code: z.string().min(1).max(32_000).describe("The code to run"),
-    inputData: z.string().max(64_000).optional().describe("Optional data passed to the script as /data/input.txt"),
+    code: z.string().min(1).max(64_000).describe("The code to run. Read any input text from /data/input.txt, never from a filename."),
+    inputData: z.string().max(64_000).optional().describe("Text content to process — written to /data/input.txt inside the container. Use this whenever you need to pass document or conversation text to the script."),
   }),
   execute: async (input: { language: "python" | "javascript" | "bash"; code: string; inputData?: string }) => {
     const { language, code, inputData } = input;
@@ -90,6 +103,7 @@ export const executeCode = tool({
       return await runInDocker(language, code, inputData);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logDebug("[execute-code]", "error", { language, message: msg });
       if (msg.includes("ENOENT") || msg.includes("Cannot connect")) {
         return { stdout: "", stderr: "Docker is not available on this server.", exitCode: 1, language };
       }

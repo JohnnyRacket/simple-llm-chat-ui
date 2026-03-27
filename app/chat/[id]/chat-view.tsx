@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage, type ReasoningUIPart } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check, Copy } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { FileAttachment } from "@/components/file-attachment";
@@ -39,6 +40,31 @@ function parseMessageParts(text: string): MessageSegment[] {
     segments.push({ type: "text", text: text.slice(lastIndex) });
   }
   return segments;
+}
+
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .filter((p) => p.type === "text")
+    .map((p) => (p as { text: string }).text)
+    .join("\n");
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [text]);
+  return (
+    <button
+      onClick={handleCopy}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-muted-foreground hover:text-foreground hover:bg-black/10 dark:hover:bg-white/10"
+      aria-label="Copy message"
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  );
 }
 
 function getLastAssistantMessage(messages: ChatMessage[]) {
@@ -286,46 +312,51 @@ export function ChatView({
                         message.role === "user" ? "justify-end" : "justify-start"
                       }`}
                     >
-                      <div
-                        className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                          message.role === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-foreground"
-                        }`}
-                      >
-                        {message.parts.map((part, i) => {
-                          if (part.type === "text") {
-                            return parseMessageParts(part.text).map((seg, j) =>
-                              seg.type === "file" ? (
-                                <FileAttachment
-                                  key={`${i}-${j}`}
-                                  filename={seg.filename}
-                                  pages={seg.pages}
-                                  content={seg.content}
+                      <div className="group flex flex-col max-w-[80%]">
+                        <div
+                          className={`rounded-lg px-4 py-2 ${
+                            message.role === "user"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-foreground"
+                          }`}
+                        >
+                          {message.parts.map((part, i) => {
+                            if (part.type === "text") {
+                              return parseMessageParts(part.text).map((seg, j) =>
+                                seg.type === "file" ? (
+                                  <FileAttachment
+                                    key={`${i}-${j}`}
+                                    filename={seg.filename}
+                                    pages={seg.pages}
+                                    content={seg.content}
+                                  />
+                                ) : (
+                                  <MarkdownMessage key={`${i}-${j}`} content={seg.text} />
+                                )
+                              );
+                            }
+                            if (part.type === "reasoning") {
+                              return (
+                                <ReasoningPart
+                                  key={i}
+                                  part={part as ReasoningUIPart}
                                 />
-                              ) : (
-                                <MarkdownMessage key={`${i}-${j}`} content={seg.text} />
-                              )
-                            );
-                          }
-                          if (part.type === "reasoning") {
-                            return (
-                              <ReasoningPart
-                                key={i}
-                                part={part as ReasoningUIPart}
-                              />
-                            );
-                          }
-                          if (part.type.startsWith("tool-")) {
-                            return (
-                              <ToolCallPart
-                                key={i}
-                                part={part as Parameters<typeof ToolCallPart>[0]["part"]}
-                              />
-                            );
-                          }
-                          return null;
-                        })}
+                              );
+                            }
+                            if (part.type.startsWith("tool-")) {
+                              return (
+                                <ToolCallPart
+                                  key={i}
+                                  part={part as Parameters<typeof ToolCallPart>[0]["part"]}
+                                />
+                              );
+                            }
+                            return null;
+                          })}
+                        </div>
+                        <div className="flex mt-0.5 justify-end">
+                          <CopyButton text={getMessageText(message)} />
+                        </div>
                       </div>
                     </div>
                     {statsUsage && <ResponseStats usage={statsUsage} />}
