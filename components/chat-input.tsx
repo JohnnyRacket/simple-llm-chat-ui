@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker } from "@/components/model-picker";
 import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
-import { Bot, Brain, GitFork, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { Bot, Brain, Code, GitFork, Minimize2, Paperclip, Send, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 type ChatMessage = UIMessage<{
@@ -60,6 +60,8 @@ export const ChatInput = memo(function ChatInput({
     setReasoningEnabled,
     createDocumentEnabled,
     setCreateDocumentEnabled,
+    programmaticEnabled,
+    setProgrammaticEnabled,
     serverInfo,
     modelsInfo,
     models,
@@ -157,6 +159,19 @@ export const ChatInput = memo(function ChatInput({
               Create Doc
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setProgrammaticEnabled(!programmaticEnabled)}
+            aria-pressed={programmaticEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              programmaticEnabled
+                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Code className="h-3.5 w-3.5" />
+            Programmatic
+          </button>
           <button
             type="button"
             onClick={() => setAgentsEnabled(!agentsEnabled)}

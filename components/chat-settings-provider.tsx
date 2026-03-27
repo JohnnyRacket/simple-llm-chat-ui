@@ -24,6 +24,8 @@ type ChatSettingsContextValue = {
   setReasoningEnabled: (enabled: boolean) => void;
   createDocumentEnabled: boolean;
   setCreateDocumentEnabled: (enabled: boolean) => void;
+  programmaticEnabled: boolean;
+  setProgrammaticEnabled: (enabled: boolean) => void;
   modelsInfo: Record<string, ServerInfo>;
   serverInfo: ServerInfo;
   models: ModelInfo[];
@@ -38,6 +40,7 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
   const [agentPort, setAgentPort] = useState(PORTS[0]);
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
   const [createDocumentEnabled, setCreateDocumentEnabled] = useState(false);
+  const [programmaticEnabled, setProgrammaticEnabled] = useState(false);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
 
   useEffect(() => {
@@ -78,6 +81,8 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
         setReasoningEnabled,
         createDocumentEnabled,
         setCreateDocumentEnabled,
+        programmaticEnabled,
+        setProgrammaticEnabled,
         modelsInfo,
         serverInfo,
         models,

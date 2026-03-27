@@ -7,3 +7,4 @@ export type {
   ParallelAgentsOutput,
 } from "./sub-agent";
 export { createDocument } from "./create-document";
+export { executeCode } from "./execute-code";

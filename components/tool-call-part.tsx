@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Download, FileText, Globe, Loader2 } from "lucide-react";
+import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Code, Download, FileText, Globe, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 type ToolPart = {
@@ -107,6 +107,7 @@ type SearchResult = { title: string; url: string; snippet: string };
 type SearchOutput = { results: SearchResult[] };
 type FetchOutput = { title: string; content: string };
 type DocumentOutput = { filename: string; content: string; summary: string };
+type CodeExecutionOutput = { stdout: string; stderr: string; exitCode: number; language: string; truncated?: boolean };
 type ToolDisplayState = {
   toolName: string;
   isPending: boolean;
@@ -141,6 +142,35 @@ function DocumentCard({ output }: { output: DocumentOutput }) {
       </div>
       <Download className="h-4 w-4 shrink-0 opacity-70 mt-0.5" />
     </button>
+  );
+}
+
+function CodeExecutionResult({ part, output }: { part: ToolPart; output: CodeExecutionOutput }) {
+  const code = (part.input as { code?: string } | undefined)?.code ?? "";
+  const success = output.exitCode === 0;
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70 font-medium">{output.language}</p>
+        <pre className="max-h-64 overflow-y-auto rounded bg-foreground/5 p-2 whitespace-pre-wrap break-words text-xs font-mono text-foreground/80">{code}</pre>
+      </div>
+      {output.stdout && (
+        <div>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70 font-medium">stdout</p>
+          <pre className="max-h-48 overflow-y-auto rounded bg-foreground/5 p-2 whitespace-pre-wrap break-words text-xs font-mono text-foreground/80">{output.stdout}</pre>
+        </div>
+      )}
+      {output.stderr && (
+        <div>
+          <p className={`mb-1 text-[10px] uppercase tracking-wide font-medium ${success ? "text-muted-foreground/70" : "text-destructive/70"}`}>stderr</p>
+          <pre className={`max-h-48 overflow-y-auto rounded p-2 whitespace-pre-wrap break-words text-xs font-mono ${success ? "bg-foreground/5 text-foreground/80" : "bg-destructive/5 text-destructive/90"}`}>{output.stderr}</pre>
+        </div>
+      )}
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground/70">
+        <span className={success ? "text-green-600 dark:text-green-400" : "text-destructive"}>exit {output.exitCode}</span>
+        {output.truncated && <span className="italic">Output truncated to 8,000 chars</span>}
+      </div>
+    </div>
   );
 }
 
@@ -222,6 +252,12 @@ function getToolLabel(part: ToolPart, state: ToolDisplayState) {
     return input?.filename ? `Document: ${input.filename}.md` : "Creating document…";
   }
 
+  if (state.toolName === "executeCode") {
+    const input = part.input as { language?: string } | undefined;
+    const lang = input?.language ?? "code";
+    return state.isPending ? `Running ${lang}…` : `Executed ${lang}`;
+  }
+
   return state.toolName;
 }
 
@@ -253,6 +289,8 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
           <Bot className="h-4 w-4 shrink-0 opacity-70" />
         ) : state.toolName === "createDocument" ? (
           <FileText className="h-4 w-4 shrink-0 opacity-70" />
+        ) : state.toolName === "executeCode" ? (
+          <Code className="h-4 w-4 shrink-0 opacity-70" />
         ) : (
           <Globe className="h-4 w-4 shrink-0 opacity-70" />
         )}
@@ -283,6 +321,8 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
             <SearchResults output={part.output as SearchOutput} />
           ) : state.toolName === "fetchPage" ? (
             <PageContent output={part.output as FetchOutput} />
+          ) : state.toolName === "executeCode" ? (
+            <CodeExecutionResult part={part} output={part.output as CodeExecutionOutput} />
           ) : (
             <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
               {JSON.stringify(part.output, null, 2)}

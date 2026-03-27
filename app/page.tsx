@@ -14,7 +14,7 @@ export default function Home() {
   const router = useRouter();
   const { chats, removeChat } = useChatHistory();
 
-  const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled } = useChatSettings();
+  const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled } = useChatSettings();
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -39,6 +39,7 @@ export default function Home() {
             agentPort,
             enableReasoning: reasoningEnabled,
             enableCreateDocument: createDocumentEnabled,
+            enableProgrammatic: programmaticEnabled,
           }),
         });
 
@@ -50,7 +51,7 @@ export default function Home() {
         setSending(false);
       }
     },
-    [sending, selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, router]
+    [sending, selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, router]
   );
 
   const handleDeleteChat = useCallback(

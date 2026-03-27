@@ -21,7 +21,7 @@ import {
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
 import { registerAbort, removeAbort } from "@/lib/abort-registry";
-import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument } from "@/lib/tools";
+import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument, executeCode } from "@/lib/tools";
 import { createLLM } from "@/lib/llm";
 import { errorDetails, errorMessage, logDebug, previewValue } from "@/lib/debug-chat-stream";
 import { repairParentAgentToolCall } from "@/lib/tools/parent-agent-tool-repair";
@@ -48,7 +48,8 @@ export async function POST(req: Request) {
     agentPort,
     enableReasoning = false,
     enableCreateDocument = false,
-  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean } = await req.json();
+    enableProgrammatic = false,
+  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean; enableProgrammatic?: boolean } = await req.json();
 
   const user = await getUser();
   const userContent =
@@ -113,6 +114,9 @@ export async function POST(req: Request) {
     tools.subAgent = createSubAgentTool(resolvedAgentPort, enableTools);
     tools.parallelAgents = createParallelAgentsTool(resolvedAgentPort, enableTools);
   }
+  if (enableProgrammatic) {
+    tools.executeCode = executeCode;
+  }
   const hasTools = Object.keys(tools).length > 0;
   logDebug("[chat-stream]", "POST start", {
     chatId: resolvedChatId,
@@ -122,6 +126,7 @@ export async function POST(req: Request) {
     enableAgents,
     enableReasoning,
     enableCreateDocument,
+    enableProgrammatic,
     hasTools,
   });
 
@@ -141,10 +146,17 @@ export async function POST(req: Request) {
     "8. Never answer from your own knowledge — always delegate first.";
 
   const webToolSystem =
-    `You are a helpful assistant with access to web search and page reading tools${enableCreateDocument ? ", and document creation" : ""}. ` +
+    `You are a helpful assistant with access to ${[
+      enableTools ? "web search and page reading tools" : null,
+      enableProgrammatic ? "a sandboxed code execution environment (Python, JavaScript, Bash)" : null,
+      enableCreateDocument ? "document creation" : null,
+    ].filter(Boolean).join(", ")}. ` +
     "When you use a tool, always read the results carefully and then provide a thorough answer to the user based on what you found. " +
     (enableCreateDocument
       ? "When asked to produce a report, document, or written artifact, use the createDocument tool with the full markdown content, then follow up with a brief high-level summary. "
+      : "") +
+    (enableProgrammatic
+      ? "When asked to compute, calculate, or process data, prefer using the executeCode tool. "
       : "") +
     "Never stop after a tool call without giving a final response.";
 
