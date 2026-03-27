@@ -3,12 +3,13 @@ import db from "./index";
 export async function createChatWithMessage(
   userId: string,
   title: string,
-  content: string
+  content: string,
+  port: string = "8080"
 ): Promise<string> {
   return db.transaction().execute(async (tx) => {
     const chat = await tx
       .insertInto("chats")
-      .values({ user_id: userId, title })
+      .values({ user_id: userId, title, port })
       .returning("id")
       .executeTakeFirstOrThrow();
 
@@ -141,7 +142,7 @@ export async function forkChat(
   return db.transaction().execute(async (tx) => {
     const source = await tx
       .selectFrom("chats")
-      .select(["id", "title"])
+      .select(["id", "title", "port"])
       .where("id", "=", chatId)
       .where("user_id", "=", userId)
       .executeTakeFirst();
@@ -150,7 +151,7 @@ export async function forkChat(
 
     const newChat = await tx
       .insertInto("chats")
-      .values({ user_id: userId, title: `Fork of ${source.title}` })
+      .values({ user_id: userId, title: `Fork of ${source.title}`, port: source.port })
       .returning("id")
       .executeTakeFirstOrThrow();
 
@@ -177,6 +178,20 @@ export async function forkChat(
 
     return newChat.id;
   });
+}
+
+export async function getChatPort(
+  chatId: string,
+  userId: string
+): Promise<string> {
+  const row = await db
+    .selectFrom("chats")
+    .select("port")
+    .where("id", "=", chatId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+
+  return row?.port ?? "8080";
 }
 
 export async function deleteChat(

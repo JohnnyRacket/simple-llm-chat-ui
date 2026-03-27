@@ -13,12 +13,14 @@ import type { ModelInfo } from "@/components/model-picker";
 export function ChatView({
   chatId,
   initialMessages,
+  port,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
+  port: string;
 }) {
   const router = useRouter();
-  const [selectedPort, setSelectedPort] = useState("8080");
+  const [selectedPort, setSelectedPort] = useState(port);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -128,7 +130,7 @@ export function ChatView({
       {hasMessages ? (
         <>
           <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4">
-            <div className="mx-auto max-w-2xl space-y-4">
+            <div className="mx-auto max-w-4xl space-y-4">
               {messages.map((message, idx) => {
                 const isCompleted =
                   message.role === "assistant" &&
@@ -183,7 +185,7 @@ export function ChatView({
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl space-y-4">
+          <div className="w-full max-w-4xl space-y-4">
             {inputIsland}
           </div>
         </div>

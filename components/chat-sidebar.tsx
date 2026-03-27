@@ -109,7 +109,9 @@ export function ChatSidebar({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDeleteChat(chat.id);
+                    if (confirm("Delete this chat? This cannot be undone.")) {
+                      onDeleteChat(chat.id);
+                    }
                   }}
                   className="p-1.5 mr-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent text-sidebar-foreground/50 hover:text-destructive transition-opacity"
                 >

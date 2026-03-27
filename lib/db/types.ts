@@ -15,6 +15,7 @@ export interface ChatsTable {
   user_id: string;
   title: string;
   active_stream_id: string | null;
+  port: string;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }

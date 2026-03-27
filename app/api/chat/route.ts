@@ -14,6 +14,7 @@ import {
   touchChat,
   setActiveStreamId,
   clearActiveStreamId,
+  getChatPort,
 } from "@/lib/db/chats";
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
       .join("") ?? "";
 
   let resolvedChatId: string;
+  let resolvedPort = port;
 
   if (incomingChatId) {
     // Validate ownership
@@ -89,10 +91,11 @@ export async function POST(req: Request) {
     }
 
     resolvedChatId = incomingChatId;
+    resolvedPort = await getChatPort(incomingChatId, user.id);
     await appendMessage(resolvedChatId, "user", userContent);
   } else {
     const title = generateTitle(userContent);
-    resolvedChatId = await createChatWithMessage(user.id, title, userContent);
+    resolvedChatId = await createChatWithMessage(user.id, title, userContent, port);
   }
 
   // Load full conversation from DB for context
@@ -104,7 +107,7 @@ export async function POST(req: Request) {
     createdAt: m.createdAt,
   }));
 
-  const llm = createLLM(port);
+  const llm = createLLM(resolvedPort);
 
   const result = streamText({
     model: llm("model"),

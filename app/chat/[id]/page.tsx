@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/user";
-import { loadMessages } from "@/lib/db/chats";
+import { loadMessages, getChatPort } from "@/lib/db/chats";
 import { ChatView } from "./chat-view";
 import type { UIMessage } from "ai";
 
@@ -11,7 +11,10 @@ export default async function ChatPage({
 }) {
   const { id } = await params;
   const user = await getUser();
-  const dbMessages = await loadMessages(id, user.id);
+  const [dbMessages, port] = await Promise.all([
+    loadMessages(id, user.id),
+    getChatPort(id, user.id),
+  ]);
 
   if (dbMessages.length === 0) {
     redirect("/");
@@ -25,5 +28,5 @@ export default async function ChatPage({
     createdAt: m.createdAt,
   }));
 
-  return <ChatView chatId={id} initialMessages={initialMessages} />;
+  return <ChatView chatId={id} initialMessages={initialMessages} port={port} />;
 }

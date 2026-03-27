@@ -30,11 +30,11 @@ export function ContextUsageBar({
         : "bg-green-500";
 
   return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+    <div className="flex items-center gap-3 text-xs text-muted-foreground min-w-0">
       {modelPicker}
       {showBar && (
-        <>
-          <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden min-w-16">
+        <div className="flex items-center gap-3 ml-auto min-w-0">
+          <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden min-w-12">
             <div
               className={`h-full rounded-full transition-all duration-300 ${barColor}`}
               style={{ width: `${percentage}%` }}
@@ -53,7 +53,7 @@ export function ContextUsageBar({
               </TooltipContent>
             </Tooltip>
           )}
-        </>
+        </div>
       )}
     </div>
   );
