@@ -131,7 +131,7 @@ export async function POST(req: Request) {
     model,
     ...(enableTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
-    ...(enableTools ? { tools: { webSearch, fetchPage }, stopWhen: stepCountIs(5) } : {}),
+    ...(enableTools ? { tools: { webSearch, fetchPage }, stopWhen: stepCountIs(8) } : {}),
     async onFinish({ text, steps, usage, providerMetadata, reasoningText }) {
       const t = (
         providerMetadata?.["local-llama"] as

@@ -130,16 +130,6 @@ export const ChatInput = memo(function ChatInput({
             <Paperclip className="h-3.5 w-3.5" />
             File upload
           </button>
-          {onFork && (
-            <button
-              type="button"
-              onClick={onFork}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <GitFork className="h-3.5 w-3.5" />
-              Fork
-            </button>
-          )}
           <button
             type="button"
             onClick={() => onToggleTools(!toolsEnabled)}
@@ -166,6 +156,16 @@ export const ChatInput = memo(function ChatInput({
             <Brain className="h-3.5 w-3.5" />
             Thinking
           </button>
+          {onFork && (
+            <button
+              type="button"
+              onClick={onFork}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-auto"
+            >
+              <GitFork className="h-3.5 w-3.5" />
+              Fork
+            </button>
+          )}
         </div>
 
         {/* Attached files */}
