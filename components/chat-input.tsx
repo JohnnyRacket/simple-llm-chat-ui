@@ -3,17 +3,10 @@
 import { memo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
-import { ModelPicker, type ModelInfo } from "@/components/model-picker";
-import { Brain, GitFork, Globe, Paperclip, Send, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { ModelPicker } from "@/components/model-picker";
+import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
+import { Bot, Brain, GitFork, Minimize2, Paperclip, Send, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
-
-const PORTS = ["8080", "8081"];
-
-type ServerInfo = {
-  contextSize: number;
-  modelName: string | null;
-  paramsB: number | null;
-};
 
 type ChatMessage = UIMessage<{
   usage?: {
@@ -31,40 +24,43 @@ type Attachment = {
   pageCount: number;
 };
 
-export type { ServerInfo, ChatMessage };
-export { PORTS };
+export type { ChatMessage };
 
 export const ChatInput = memo(function ChatInput({
   isLoading,
   hasMessages,
   onSend,
   onFork,
+  onCompactFork,
+  isCompactForking,
   showUsage,
   usage,
-  serverInfo,
-  models,
-  selectedPort,
-  onSelectPort,
-  toolsEnabled,
-  onToggleTools,
-  reasoningEnabled,
-  onToggleReasoning,
 }: {
   isLoading: boolean;
   hasMessages: boolean;
   onSend: (text: string) => void;
   onFork?: () => void;
+  onCompactFork?: () => void;
+  isCompactForking?: boolean;
   showUsage: boolean;
   usage: NonNullable<ChatMessage["metadata"]>["usage"] | undefined;
-  serverInfo: ServerInfo;
-  models: ModelInfo[];
-  selectedPort: string;
-  onSelectPort: (port: string) => void;
-  toolsEnabled: boolean;
-  onToggleTools: (enabled: boolean) => void;
-  reasoningEnabled: boolean;
-  onToggleReasoning: (enabled: boolean) => void;
 }) {
+  const {
+    selectedPort,
+    setSelectedPort,
+    toolsEnabled,
+    setToolsEnabled,
+    agentsEnabled,
+    setAgentsEnabled,
+    agentPort,
+    setAgentPort,
+    reasoningEnabled,
+    setReasoningEnabled,
+    createDocumentEnabled,
+    setCreateDocumentEnabled,
+    serverInfo,
+    models,
+  } = useChatSettings();
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -132,7 +128,7 @@ export const ChatInput = memo(function ChatInput({
           </button>
           <button
             type="button"
-            onClick={() => onToggleTools(!toolsEnabled)}
+            onClick={() => setToolsEnabled(!toolsEnabled)}
             aria-pressed={toolsEnabled}
             className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
               toolsEnabled
@@ -143,9 +139,56 @@ export const ChatInput = memo(function ChatInput({
             <Wrench className="h-3.5 w-3.5" />
             Tools
           </button>
+          {toolsEnabled && (
+            <button
+              type="button"
+              onClick={() => setCreateDocumentEnabled(!createDocumentEnabled)}
+              aria-pressed={createDocumentEnabled}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                createDocumentEnabled
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Create Doc
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => onToggleReasoning(!reasoningEnabled)}
+            onClick={() => setAgentsEnabled(!agentsEnabled)}
+            aria-pressed={agentsEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              agentsEnabled
+                ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Sub Agents
+          </button>
+          {agentsEnabled && (
+            <div className="inline-flex items-center gap-1 rounded-md bg-purple-100 dark:bg-purple-900/40 px-1.5 py-1">
+              <span className="text-xs text-purple-600 dark:text-purple-300 opacity-70">model:</span>
+              {PORTS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAgentPort(p)}
+                  className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
+                    agentPort === p
+                      ? "bg-purple-600 text-white"
+                      : "text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800"
+                  }`}
+                >
+                  :{p}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setReasoningEnabled(!reasoningEnabled)}
             aria-pressed={reasoningEnabled}
             className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
               reasoningEnabled
@@ -156,11 +199,26 @@ export const ChatInput = memo(function ChatInput({
             <Brain className="h-3.5 w-3.5" />
             Thinking
           </button>
+          {onCompactFork && (
+            <button
+              type="button"
+              onClick={onCompactFork}
+              disabled={isCompactForking}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-auto disabled:opacity-50"
+            >
+              {isCompactForking ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Minimize2 className="h-3.5 w-3.5" />
+              )}
+              Compact & Fork
+            </button>
+          )}
           {onFork && (
             <button
               type="button"
               onClick={onFork}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-auto"
+              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors${onCompactFork ? "" : " ml-auto"}`}
             >
               <GitFork className="h-3.5 w-3.5" />
               Fork
@@ -234,7 +292,7 @@ export const ChatInput = memo(function ChatInput({
                   <ModelPicker
                     models={models}
                     selectedPort={selectedPort}
-                    onSelect={onSelectPort}
+                    onSelect={setSelectedPort}
                   />
                 ) : undefined
               }

@@ -19,6 +19,11 @@ export const MarkdownMessage = memo(function MarkdownMessage({
           pre: ({ children }) => (
             <pre className="overflow-x-auto">{children}</pre>
           ),
+          table: ({ children }) => (
+            <div className="overflow-x-auto [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent">
+              <table>{children}</table>
+            </div>
+          ),
           code: ({ children, className: codeClassName }) => {
             const isBlock = codeClassName?.startsWith("language-");
             if (isBlock)

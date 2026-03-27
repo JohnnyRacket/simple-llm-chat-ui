@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ChatInput, PORTS, type ServerInfo } from "@/components/chat-input";
-import type { ModelInfo } from "@/components/model-picker";
+import { ChatInput } from "@/components/chat-input";
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { useUser } from "@/components/user-provider";
+import { useChatSettings } from "@/components/chat-settings-provider";
 import { useChatHistory } from "@/hooks/use-chat-history";
 
 export default function Home() {
@@ -14,23 +14,9 @@ export default function Home() {
   const router = useRouter();
   const { chats, removeChat } = useChatHistory();
 
+  const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled } = useChatSettings();
   const [sending, setSending] = useState(false);
-  const [selectedPort, setSelectedPort] = useState("8080");
-  const [toolsEnabled, setToolsEnabled] = useState(true);
-  const [reasoningEnabled, setReasoningEnabled] = useState(true);
-  const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  useEffect(() => {
-    PORTS.forEach((port) => {
-      fetch(`/api/server-info?port=${port}`)
-        .then((res) => res.json())
-        .then((data: ServerInfo) => {
-          setModelsInfo((prev) => ({ ...prev, [port]: data }));
-        })
-        .catch(() => {});
-    });
-  }, []);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -49,7 +35,10 @@ export default function Home() {
             },
             port: selectedPort,
             enableTools: toolsEnabled,
+            enableAgents: agentsEnabled,
+            agentPort,
             enableReasoning: reasoningEnabled,
+            enableCreateDocument: createDocumentEnabled,
           }),
         });
 
@@ -61,7 +50,7 @@ export default function Home() {
         setSending(false);
       }
     },
-    [sending, selectedPort, toolsEnabled, reasoningEnabled, router]
+    [sending, selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, router]
   );
 
   const handleDeleteChat = useCallback(
@@ -70,18 +59,6 @@ export default function Home() {
     },
     [removeChat]
   );
-
-  const serverInfo = modelsInfo[selectedPort] ?? {
-    contextSize: 0,
-    modelName: null,
-    paramsB: null,
-  };
-
-  const models: ModelInfo[] = PORTS.map((port) => ({
-    port,
-    modelName: modelsInfo[port]?.modelName ?? null,
-    paramsB: modelsInfo[port]?.paramsB ?? null,
-  })).filter((m) => m.modelName !== null);
 
   return (
     <div className="flex h-dvh bg-background">
@@ -109,14 +86,6 @@ export default function Home() {
               onSend={handleSend}
               showUsage={false}
               usage={undefined}
-              serverInfo={serverInfo}
-              models={models}
-              selectedPort={selectedPort}
-              onSelectPort={setSelectedPort}
-              toolsEnabled={toolsEnabled}
-              onToggleTools={setToolsEnabled}
-              reasoningEnabled={reasoningEnabled}
-              onToggleReasoning={setReasoningEnabled}
             />
           </div>
         </div>

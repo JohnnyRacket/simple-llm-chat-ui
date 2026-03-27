@@ -8,10 +8,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { FileAttachment } from "@/components/file-attachment";
 import { ResponseStats } from "@/components/response-stats";
-import { ChatInput, PORTS, type ServerInfo, type ChatMessage } from "@/components/chat-input";
+import { ChatInput, type ChatMessage } from "@/components/chat-input";
+import { useChatSettings } from "@/components/chat-settings-provider";
 import { ToolCallPart } from "@/components/tool-call-part";
 import { ReasoningPart } from "@/components/reasoning-part";
-import type { ModelInfo } from "@/components/model-picker";
 
 type MessageSegment =
   | { type: "text"; text: string }
@@ -50,20 +50,30 @@ export function ChatView({
   port: string;
 }) {
   const router = useRouter();
-  const [selectedPort, setSelectedPort] = useState(port);
-  const [toolsEnabled, setToolsEnabled] = useState(true);
-  const [reasoningEnabled, setReasoningEnabled] = useState(true);
-  const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
+  const { selectedPort, setSelectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled } = useChatSettings();
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
 
-  const selectedPortRef = useRef(selectedPort);
-  const toolsEnabledRef = useRef(toolsEnabled);
-  const reasoningEnabledRef = useRef(reasoningEnabled);
-  useEffect(() => { selectedPortRef.current = selectedPort; }, [selectedPort]);
-  useEffect(() => { toolsEnabledRef.current = toolsEnabled; }, [toolsEnabled]);
-  useEffect(() => { reasoningEnabledRef.current = reasoningEnabled; }, [reasoningEnabled]);
+  // Sync latest settings into a single ref so the memoized transport can read them
+  type SettingsSnapshot = {
+    selectedPort: string;
+    toolsEnabled: boolean;
+    agentsEnabled: boolean;
+    agentPort: string;
+    reasoningEnabled: boolean;
+    createDocumentEnabled: boolean;
+  };
+  const settingsRef = useRef<SettingsSnapshot>({ selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled });
+  useEffect(() => {
+    settingsRef.current = { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled };
+  }, [selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled]);
+
+  // Initialize port from the chat's stored port on mount
+  useEffect(() => {
+    setSelectedPort(port);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const transport = useMemo(
     () =>
@@ -73,9 +83,12 @@ export function ChatView({
           body: {
             id,
             message: messages[messages.length - 1],
-            port: selectedPortRef.current,
-            enableTools: toolsEnabledRef.current,
-            enableReasoning: reasoningEnabledRef.current,
+            port: settingsRef.current.selectedPort,
+            enableTools: settingsRef.current.toolsEnabled,
+            enableAgents: settingsRef.current.agentsEnabled,
+            agentPort: settingsRef.current.agentPort,
+            enableReasoning: settingsRef.current.reasoningEnabled,
+            enableCreateDocument: settingsRef.current.createDocumentEnabled,
           },
         }),
       }),
@@ -109,22 +122,26 @@ export function ChatView({
     }
   }, [messages]);
 
-  useEffect(() => {
-    PORTS.forEach((port) => {
-      fetch(`/api/server-info?port=${port}`)
-        .then((res) => res.json())
-        .then((data: ServerInfo) => {
-          setModelsInfo((prev) => ({ ...prev, [port]: data }));
-        })
-        .catch(() => {});
-    });
-  }, []);
-
   const handleFork = useCallback(async () => {
     const res = await fetch(`/api/chats/${chatId}/fork`, { method: "POST" });
     if (res.ok) {
       const { chatId: newChatId } = await res.json();
       router.push(`/chat/${newChatId}`);
+    }
+  }, [chatId, router]);
+
+  const [isCompactForking, setIsCompactForking] = useState(false);
+
+  const handleCompactFork = useCallback(async () => {
+    setIsCompactForking(true);
+    try {
+      const res = await fetch(`/api/chats/${chatId}/compact-fork`, { method: "POST" });
+      if (res.ok) {
+        const { chatId: newChatId } = await res.json();
+        router.push(`/chat/${newChatId}`);
+      }
+    } finally {
+      setIsCompactForking(false);
     }
   }, [chatId, router]);
 
@@ -135,18 +152,8 @@ export function ChatView({
     [sendMessage]
   );
 
-  const serverInfo = modelsInfo[selectedPort] ?? {
-    contextSize: 0,
-    modelName: null,
-    paramsB: null,
-  };
+  const { serverInfo } = useChatSettings();
   const showUsage = usage && serverInfo.contextSize > 0;
-
-  const models: ModelInfo[] = PORTS.map((port) => ({
-    port,
-    modelName: modelsInfo[port]?.modelName ?? null,
-    paramsB: modelsInfo[port]?.paramsB ?? null,
-  })).filter((m) => m.modelName !== null);
 
   const inputIsland = (
     <ChatInput
@@ -154,16 +161,10 @@ export function ChatView({
       hasMessages={hasMessages}
       onSend={handleSend}
       onFork={handleFork}
+      onCompactFork={handleCompactFork}
+      isCompactForking={isCompactForking}
       showUsage={!!showUsage}
       usage={usage}
-      serverInfo={serverInfo}
-      models={models}
-      selectedPort={selectedPort}
-      onSelectPort={setSelectedPort}
-      toolsEnabled={toolsEnabled}
-      onToggleTools={setToolsEnabled}
-      reasoningEnabled={reasoningEnabled}
-      onToggleReasoning={setReasoningEnabled}
     />
   );
 

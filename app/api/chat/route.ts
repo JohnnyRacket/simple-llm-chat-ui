@@ -7,8 +7,6 @@ import {
   stepCountIs,
   type UIMessage,
 } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { SharedV3ProviderMetadata } from "@ai-sdk/provider";
 import { getUser } from "@/lib/user";
 import {
   createChatWithMessage,
@@ -21,40 +19,8 @@ import {
 } from "@/lib/db/chats";
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
-import { webSearch, fetchPage } from "@/lib/tools";
-
-const BASE_HOST = "http://192.168.1.168";
-
-function createLLM(port: string) {
-  return createOpenAICompatible({
-    name: "local-llama",
-    baseURL: `${BASE_HOST}:${port}/v1`,
-    apiKey: "not-needed",
-    includeUsage: true,
-    metadataExtractor: {
-      extractMetadata: async ({ parsedBody }) => {
-        const body = parsedBody as Record<string, unknown>;
-        return body?.timings
-          ? ({ "local-llama": { timings: body.timings } } as unknown as SharedV3ProviderMetadata)
-          : undefined;
-      },
-      createStreamExtractor: () => {
-        let timings: Record<string, number> | null = null;
-        return {
-          processChunk(chunk: unknown) {
-            const c = chunk as Record<string, unknown>;
-            if (c?.timings) timings = c.timings as Record<string, number>;
-          },
-          buildMetadata() {
-            return timings
-              ? ({ "local-llama": { timings } } as unknown as SharedV3ProviderMetadata)
-              : undefined;
-          },
-        };
-      },
-    },
-  });
-}
+import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument } from "@/lib/tools";
+import { createLLM } from "@/lib/llm";
 
 function generateTitle(text: string): string {
   const max = 50;
@@ -70,8 +36,11 @@ export async function POST(req: Request) {
     message,
     port = "8080",
     enableTools = false,
+    enableAgents = false,
+    agentPort,
     enableReasoning = false,
-  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableReasoning?: boolean } = await req.json();
+    enableCreateDocument = false,
+  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean } = await req.json();
 
   const user = await getUser();
   const userContent =
@@ -122,16 +91,49 @@ export async function POST(req: Request) {
       })
     : baseModel;
 
-  const toolSystem =
-    "You are a helpful assistant with access to web search and page reading tools. " +
+  const resolvedAgentPort = agentPort ?? resolvedPort;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tools: Record<string, any> = {};
+  if (enableTools) {
+    tools.webSearch = webSearch;
+    tools.fetchPage = fetchPage;
+    if (enableCreateDocument) {
+      tools.createDocument = createDocument;
+    }
+  }
+  if (enableAgents) {
+    tools.subAgent = createSubAgentTool(resolvedAgentPort, enableTools);
+    tools.parallelAgents = createParallelAgentsTool(resolvedAgentPort, enableTools);
+  }
+  const hasTools = Object.keys(tools).length > 0;
+
+  const agentSystem =
+    "You are an orchestrating AI assistant. You delegate work to sub-agents rather than answering directly.\n\n" +
+    "You have two agent tools:\n" +
+    "- subAgent: for a single focused task\n" +
+    "- parallelAgents: for multiple parallel tasks (pass an array of agents, all run simultaneously)\n\n" +
+    "RULES:\n" +
+    "1. When asked to research, analyze, or investigate multiple distinct things, ALWAYS use parallelAgents — one entry per thing.\n" +
+    "2. When the request is vague or the best paths are unclear: first call subAgent with role=planner to map out the research directions. Then in the next step call parallelAgents with one agent per direction from the plan.\n" +
+    "3. Use subAgent only when there is genuinely a single focused task.\n" +
+    "4. After all agents return, synthesize their findings into a coherent final response.\n" +
+    "5. Never answer from your own knowledge — always delegate first.";
+
+  const webToolSystem =
+    `You are a helpful assistant with access to web search and page reading tools${enableCreateDocument ? ", and document creation" : ""}. ` +
     "When you use a tool, always read the results carefully and then provide a thorough answer to the user based on what you found. " +
+    (enableCreateDocument
+      ? "When asked to produce a report, document, or written artifact, use the createDocument tool with the full markdown content, then follow up with a brief high-level summary. "
+      : "") +
     "Never stop after a tool call without giving a final response.";
+
+  const toolSystem = enableAgents ? agentSystem : webToolSystem;
 
   const result = streamText({
     model,
-    ...(enableTools ? { system: toolSystem } : {}),
+    ...(hasTools ? { system: toolSystem } : {}),
     messages: await convertToModelMessages(uiMessages),
-    ...(enableTools ? { tools: { webSearch, fetchPage }, stopWhen: stepCountIs(8) } : {}),
+    ...(hasTools ? { tools, stopWhen: stepCountIs(8) } : {}),
     async onFinish({ text, steps, usage, providerMetadata }) {
       const t = (
         providerMetadata?.["local-llama"] as

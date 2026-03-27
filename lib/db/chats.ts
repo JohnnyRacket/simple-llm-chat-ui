@@ -275,6 +275,39 @@ export async function forkChat(
   });
 }
 
+export async function compactForkChat(
+  chatId: string,
+  userId: string,
+  compactedSummary: string
+): Promise<string | null> {
+  return db.transaction().execute(async (tx) => {
+    const source = await tx
+      .selectFrom("chats")
+      .select(["id", "title", "port"])
+      .where("id", "=", chatId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+
+    if (!source) return null;
+
+    const newChat = await tx
+      .insertInto("chats")
+      .values({ user_id: userId, title: `Compact of ${source.title}`, port: source.port })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    await tx
+      .insertInto("messages")
+      .values([
+        { chat_id: newChat.id, role: "user", content: "[Conversation compacted for context efficiency]" },
+        { chat_id: newChat.id, role: "assistant", content: compactedSummary },
+      ])
+      .execute();
+
+    return newChat.id;
+  });
+}
+
 export async function getChatPort(
   chatId: string,
   userId: string

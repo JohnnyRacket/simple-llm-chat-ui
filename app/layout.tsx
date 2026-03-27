@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { UserProvider } from "@/components/user-provider";
+import { ChatSettingsProvider } from "@/components/chat-settings-provider";
 import { getUser } from "@/lib/user";
 import "./globals.css";
 
@@ -30,7 +31,9 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <UserProvider user={user}>
-            {children}
+            <ChatSettingsProvider>
+              {children}
+            </ChatSettingsProvider>
           </UserProvider>
         </ThemeProvider>
       </body>
