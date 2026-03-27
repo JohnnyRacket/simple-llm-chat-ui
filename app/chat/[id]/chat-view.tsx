@@ -6,9 +6,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { FileAttachment } from "@/components/file-attachment";
 import { ResponseStats } from "@/components/response-stats";
 import { ChatInput, PORTS, type ServerInfo, type ChatMessage } from "@/components/chat-input";
 import type { ModelInfo } from "@/components/model-picker";
+
+type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "file"; filename: string; pages: number; content: string };
+
+function parseMessageParts(text: string): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  const regex = /<file name="([^"]+)"(?:\s+pages="(\d+)")?>([\s\S]*?)<\/file>/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", text: text.slice(lastIndex, match.index) });
+    }
+    segments.push({
+      type: "file",
+      filename: match[1],
+      pages: match[2] ? parseInt(match[2], 10) : 0,
+      content: match[3],
+    });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: "text", text: text.slice(lastIndex) });
+  }
+  return segments;
+}
 
 export function ChatView({
   chatId,
@@ -153,11 +181,17 @@ export function ChatView({
                       >
                         {message.parts.map((part, i) => {
                           if (part.type === "text") {
-                            return (
-                              <MarkdownMessage
-                                key={i}
-                                content={part.text}
-                              />
+                            return parseMessageParts(part.text).map((seg, j) =>
+                              seg.type === "file" ? (
+                                <FileAttachment
+                                  key={`${i}-${j}`}
+                                  filename={seg.filename}
+                                  pages={seg.pages}
+                                  content={seg.content}
+                                />
+                              ) : (
+                                <MarkdownMessage key={`${i}-${j}`} content={seg.text} />
+                              )
                             );
                           }
                           return null;

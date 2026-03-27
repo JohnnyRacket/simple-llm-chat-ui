@@ -65,7 +65,7 @@ export const ChatInput = memo(function ChatInput({
   function buildMessage(): string {
     let text = "";
     for (const att of attachments) {
-      text += `<file name="${att.filename}">\n${att.text}\n</file>\n\n`;
+      text += `<file name="${att.filename}" pages="${att.pageCount}">\n${att.text}\n</file>\n\n`;
     }
     text += input;
     return text;
