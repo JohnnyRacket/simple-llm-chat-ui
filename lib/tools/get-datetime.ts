@@ -3,9 +3,11 @@ import { z } from "zod";
 
 export const getDatetime = tool({
   description:
-    "Get the current date and time. Returns the current UTC and local time, " +
-    "day of week, and Unix timestamp. Use this when the user asks about the " +
-    "current date, time, or day of week.",
+    "Get the current date and time. IMPORTANT: You do not know today's date " +
+    "without calling this tool. Call this BEFORE any search or fetch when the " +
+    "query involves relative time expressions like 'this year', 'this month', " +
+    "'today', 'recent', 'latest', 'current', 'now', 'best of 2025', or any " +
+    "phrasing that requires knowing the current date to form an accurate query.",
   inputSchema: z.object({
     timezone: z
       .string()
