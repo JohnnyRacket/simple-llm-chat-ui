@@ -6,9 +6,13 @@ interface ResponseStatsProps {
     generationTps: number | null;
     totalTimeMs: number | null;
   };
+  compression?: {
+    tokensSaved: number;
+    compressionRatio: number;
+  } | null;
 }
 
-export function ResponseStats({ usage }: ResponseStatsProps) {
+export function ResponseStats({ usage, compression }: ResponseStatsProps) {
   const parts: string[] = [];
 
   if (usage.promptTps != null) {
@@ -25,6 +29,10 @@ export function ResponseStats({ usage }: ResponseStatsProps) {
 
   if (usage.totalTimeMs != null) {
     parts.push(`${(usage.totalTimeMs / 1000).toFixed(1)}s`);
+  }
+
+  if (compression && compression.tokensSaved > 0) {
+    parts.push(`Compressed: -${compression.tokensSaved.toLocaleString()} tokens (${Math.round((1 - compression.compressionRatio) * 100)}%)`);
   }
 
   return (

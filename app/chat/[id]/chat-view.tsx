@@ -95,6 +95,7 @@ export function ChatView({
     createDocumentEnabled,
     programmaticEnabled,
     widgetEnabled,
+    compressionEnabled,
     serverInfo,
   } = useChatSettings();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -111,11 +112,12 @@ export function ChatView({
     createDocumentEnabled: boolean;
     programmaticEnabled: boolean;
     widgetEnabled: boolean;
+    compressionEnabled: boolean;
   };
-  const settingsRef = useRef<SettingsSnapshot>({ selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled });
+  const settingsRef = useRef<SettingsSnapshot>({ selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, compressionEnabled });
   useEffect(() => {
-    settingsRef.current = { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled };
-  }, [selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled]);
+    settingsRef.current = { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, compressionEnabled };
+  }, [selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, compressionEnabled]);
 
   // Initialize port from the chat's stored port on mount
   useEffect(() => {
@@ -139,6 +141,7 @@ export function ChatView({
             enableCreateDocument: settingsRef.current.createDocumentEnabled,
             enableProgrammatic: settingsRef.current.programmaticEnabled,
             enableWidget: settingsRef.current.widgetEnabled,
+            enableCompression: settingsRef.current.compressionEnabled,
           },
         }),
       }),
@@ -220,7 +223,17 @@ export function ChatView({
   const showLoader = isLoading;
 
   const lastAssistant = getLastAssistantMessage(messages);
-  const usage = lastAssistant?.metadata?.usage;
+  const rawUsage = lastAssistant?.metadata?.usage;
+  const rawCompression = (lastAssistant?.metadata as Record<string, unknown> | undefined)?.compression as { tokensSaved: number; compressionRatio: number } | undefined;
+
+  // Preserve last known values during streaming (when metadata hasn't arrived yet)
+  const lastKnownUsageRef = useRef(rawUsage);
+  const lastKnownCompressionRef = useRef(rawCompression);
+  if (rawUsage) lastKnownUsageRef.current = rawUsage;
+  if (rawCompression) lastKnownCompressionRef.current = rawCompression;
+
+  const usage = rawUsage ?? lastKnownUsageRef.current;
+  const lastCompression = rawCompression ?? lastKnownCompressionRef.current;
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -283,6 +296,7 @@ export function ChatView({
       isCompactForking={isCompactForking}
       showUsage={!!showUsage}
       usage={usage}
+      compression={lastCompression}
     />
   );
 
@@ -304,6 +318,7 @@ export function ChatView({
                   message.role === "assistant" &&
                   (status === "ready" || !isLastMessage);
                 const statsUsage = isCompleted ? message.metadata?.usage : null;
+                const statsCompression = isCompleted ? (message.metadata as Record<string, unknown>)?.compression as { tokensSaved: number; compressionRatio: number } | undefined : null;
 
                 return (
                   <div key={message.id}>
@@ -359,7 +374,7 @@ export function ChatView({
                         </div>
                       </div>
                     </div>
-                    {statsUsage && <ResponseStats usage={statsUsage} />}
+                    {statsUsage && <ResponseStats usage={statsUsage} compression={statsCompression} />}
                   </div>
                 );
               })}

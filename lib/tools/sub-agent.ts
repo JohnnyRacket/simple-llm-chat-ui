@@ -1,8 +1,9 @@
-import { tool, generateText, stepCountIs } from "ai";
+import { tool, generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { webSearch, fetchPage } from "./index";
 import { errorMessage, logDebug, previewText } from "@/lib/debug-chat-stream";
+import { createHeadroomMiddleware, createStatsAccumulator } from "@/lib/headroom";
 
 const BASE_HOST = "http://192.168.1.168";
 const AGENT_HEARTBEAT_MS = 3_000;
@@ -129,6 +130,7 @@ async function runSubAgent(
   role: string,
   port: string,
   enableTools: boolean,
+  enableCompression: boolean,
   abortSignal?: AbortSignal
 ): Promise<SubAgentRunResult> {
   logDebug("[subAgent]", "run start", {
@@ -142,6 +144,10 @@ async function runSubAgent(
     baseURL: `${BASE_HOST}:${port}/v1`,
     apiKey: "not-needed",
   });
+  const baseModel = provider("model");
+  const model = enableCompression
+    ? wrapLanguageModel({ model: baseModel, middleware: createHeadroomMiddleware(createStatsAccumulator()) })
+    : baseModel;
 
   let lastEmpty: SubAgentRunResult | null = null;
 
@@ -153,7 +159,7 @@ async function runSubAgent(
         attempt,
       });
       const result = await generateText({
-        model: provider("model"),
+        model,
         system: getRolePrompt(role, enableTools),
         prompt: task,
         abortSignal,
@@ -212,7 +218,7 @@ export const parallelAgentsInputSchema = z.object({
     .describe("The list of agents to spawn in parallel. Must have at least 2 tasks."),
 });
 
-export function createSubAgentTool(port: string, enableTools: boolean) {
+export function createSubAgentTool(port: string, enableTools: boolean, enableCompression: boolean) {
   return tool({
     description:
       "Spin up a single isolated sub-agent to complete one focused task. " +
@@ -229,6 +235,7 @@ export function createSubAgentTool(port: string, enableTools: boolean) {
         role,
         port,
         enableTools,
+        enableCompression,
         abortSignal
       ).then((result) => ({ type: "result", result }));
       let lastMessage: string | undefined;
@@ -258,7 +265,7 @@ export function createSubAgentTool(port: string, enableTools: boolean) {
   });
 }
 
-export function createParallelAgentsTool(port: string, enableTools: boolean) {
+export function createParallelAgentsTool(port: string, enableTools: boolean, enableCompression: boolean) {
   return tool({
     description:
       "Spawn multiple sub-agents in parallel, each handling a distinct task. " +
@@ -284,6 +291,7 @@ export function createParallelAgentsTool(port: string, enableTools: boolean) {
           DEFAULT_AGENT_ROLE,
           port,
           enableTools,
+          enableCompression,
           abortSignal
         ).then((result) => ({
           type: "result" as const,

@@ -1,4 +1,4 @@
-import { Layers, TriangleAlert } from "lucide-react";
+import { FoldVertical, Layers, TriangleAlert } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -8,16 +8,23 @@ import {
 const RADIUS = 7;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
+export type CompressionInfo = {
+  tokensSaved: number;
+  compressionRatio: number;
+};
+
 export function ContextUsageBar({
   inputTokens,
   outputTokens,
   contextSize,
   modelPicker,
+  compression,
 }: {
   inputTokens: number;
   outputTokens: number;
   contextSize: number;
   modelPicker?: React.ReactNode;
+  compression?: CompressionInfo | null;
 }) {
   const totalTokens = (inputTokens || 0) + (outputTokens || 0);
   const showBar = contextSize > 0;
@@ -66,6 +73,19 @@ export function ContextUsageBar({
               </TooltipContent>
             </Tooltip>
             <span className="tabular-nums flex items-center gap-1">{Math.round(percentage)}% <Layers className="size-3 opacity-50" /> {Math.round(contextSize / 1000)}K</span>
+            {compression && compression.tokensSaved > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
+                    <FoldVertical className="size-3" />
+                    <span className="tabular-nums">-{compression.tokensSaved >= 1000 ? `${(compression.tokensSaved / 1000).toFixed(1)}K` : compression.tokensSaved}</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Headroom saved {compression.tokensSaved.toLocaleString()} tokens ({Math.round((1 - compression.compressionRatio) * 100)}% compressed)
+                </TooltipContent>
+              </Tooltip>
+            )}
             {percentage > 60 && (
               <Tooltip>
                 <TooltipTrigger className="text-red-500">

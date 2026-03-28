@@ -14,7 +14,7 @@ export default function Home() {
   const router = useRouter();
   const { chats, removeChat } = useChatHistory();
 
-  const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled } = useChatSettings();
+  const { selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, compressionEnabled } = useChatSettings();
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 640 : true
@@ -43,6 +43,7 @@ export default function Home() {
             enableCreateDocument: createDocumentEnabled,
             enableProgrammatic: programmaticEnabled,
             enableWidget: widgetEnabled,
+            enableCompression: compressionEnabled,
           }),
         });
 
@@ -54,7 +55,7 @@ export default function Home() {
         setSending(false);
       }
     },
-    [sending, selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, router]
+    [sending, selectedPort, toolsEnabled, agentsEnabled, agentPort, reasoningEnabled, createDocumentEnabled, programmaticEnabled, widgetEnabled, compressionEnabled, router]
   );
 
   const handleDeleteChat = useCallback(

@@ -21,10 +21,11 @@ import {
 import db from "@/lib/db";
 import { streamContext } from "@/lib/stream";
 import { registerAbort, removeAbort } from "@/lib/abort-registry";
-import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument, executeCode, renderWidget } from "@/lib/tools";
+import { webSearch, fetchPage, createSubAgentTool, createParallelAgentsTool, createDocument, executeCode, renderWidget, getDatetime } from "@/lib/tools";
 import { createLLM } from "@/lib/llm";
 import { errorDetails, errorMessage, logDebug, previewValue } from "@/lib/debug-chat-stream";
 import { repairParentAgentToolCall } from "@/lib/tools/parent-agent-tool-repair";
+import { createHeadroomMiddleware, createStatsAccumulator, getAccumulatedStats } from "@/lib/headroom";
 
 function generateTitle(text: string): string {
   const max = 50;
@@ -50,7 +51,8 @@ export async function POST(req: Request) {
     enableCreateDocument = false,
     enableProgrammatic = false,
     enableWidget = false,
-  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean; enableProgrammatic?: boolean; enableWidget?: boolean } = await req.json();
+    enableCompression = false,
+  }: { id?: string; message: UIMessage; port?: string; enableTools?: boolean; enableAgents?: boolean; agentPort?: string; enableReasoning?: boolean; enableCreateDocument?: boolean; enableProgrammatic?: boolean; enableWidget?: boolean; enableCompression?: boolean } = await req.json();
 
   const user = await getUser();
   const userContent =
@@ -94,16 +96,19 @@ export async function POST(req: Request) {
 
   const llm = createLLM(resolvedPort);
   const baseModel = llm("model");
-  const model = enableReasoning
-    ? wrapLanguageModel({
-        model: baseModel,
-        middleware: extractReasoningMiddleware({ tagName: "think" }),
-      })
+  const compressionAccumulator = createStatsAccumulator();
+  const middleware = [
+    ...(enableReasoning ? [extractReasoningMiddleware({ tagName: "think" })] : []),
+    ...(enableCompression ? [createHeadroomMiddleware(compressionAccumulator)] : []),
+  ];
+  const model = middleware.length > 0
+    ? wrapLanguageModel({ model: baseModel, middleware })
     : baseModel;
 
   const resolvedAgentPort = agentPort ?? resolvedPort;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools: Record<string, any> = {};
+  tools.getDatetime = getDatetime;
   if (enableTools) {
     tools.webSearch = webSearch;
     tools.fetchPage = fetchPage;
@@ -112,8 +117,8 @@ export async function POST(req: Request) {
     }
   }
   if (enableAgents) {
-    tools.subAgent = createSubAgentTool(resolvedAgentPort, enableTools);
-    tools.parallelAgents = createParallelAgentsTool(resolvedAgentPort, enableTools);
+    tools.subAgent = createSubAgentTool(resolvedAgentPort, enableTools, enableCompression);
+    tools.parallelAgents = createParallelAgentsTool(resolvedAgentPort, enableTools, enableCompression);
   }
   if (enableProgrammatic) {
     tools.executeCode = executeCode;
@@ -132,6 +137,7 @@ export async function POST(req: Request) {
     enableCreateDocument,
     enableProgrammatic,
     enableWidget,
+    enableCompression,
     hasTools,
   });
 
@@ -193,7 +199,7 @@ export async function POST(req: Request) {
     ...(hasTools
       ? {
           tools,
-          stopWhen: stepCountIs(8),
+          stopWhen: stepCountIs(24),
           ...(enableAgents
             ? { experimental_repairToolCall: repairParentAgentToolCall }
             : {}),
@@ -280,6 +286,7 @@ export async function POST(req: Request) {
             : null,
         },
         ...(stepsData.length > 0 ? { stepsData } : {}),
+        ...(() => { const s = getAccumulatedStats(compressionAccumulator); return s ? { compression: s } : {}; })(),
       };
 
       await appendMessage(resolvedChatId, "assistant", text, metadata);
@@ -314,6 +321,7 @@ export async function POST(req: Request) {
                 ? (timings.prompt_ms ?? 0) + (timings.predicted_ms ?? 0)
                 : null,
             },
+            ...(() => { const s = getAccumulatedStats(compressionAccumulator); return s ? { compression: s } : {}; })(),
           };
         }
       },

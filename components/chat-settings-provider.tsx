@@ -28,6 +28,8 @@ type ChatSettingsContextValue = {
   setProgrammaticEnabled: (enabled: boolean) => void;
   widgetEnabled: boolean;
   setWidgetEnabled: (enabled: boolean) => void;
+  compressionEnabled: boolean;
+  setCompressionEnabled: (enabled: boolean) => void;
   modelsInfo: Record<string, ServerInfo>;
   serverInfo: ServerInfo;
   models: ModelInfo[];
@@ -44,6 +46,7 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
   const [createDocumentEnabled, setCreateDocumentEnabled] = useState(false);
   const [programmaticEnabled, setProgrammaticEnabled] = useState(false);
   const [widgetEnabled, setWidgetEnabled] = useState(false);
+  const [compressionEnabled, setCompressionEnabled] = useState(false);
   const [modelsInfo, setModelsInfo] = useState<Record<string, ServerInfo>>({});
 
   useEffect(() => {
@@ -88,6 +91,8 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
         setProgrammaticEnabled,
         widgetEnabled,
         setWidgetEnabled,
+        compressionEnabled,
+        setCompressionEnabled,
         modelsInfo,
         serverInfo,
         models,

@@ -208,12 +208,11 @@ export const fetchPage = tool({
     const contentType = res.headers.get("content-type") ?? "";
     const finalUrl = res.url || input.url;
 
-    if (contentType.includes("text/plain")) {
-      const text = await res.text();
-      return { title: input.url, content: text.slice(0, MAX_CHARS), links: [] };
-    }
-
     if (!contentType.includes("text/html")) {
+      if (contentType.startsWith("text/") || contentType.includes("markdown")) {
+        const text = await res.text();
+        return { title: input.url, content: text.slice(0, MAX_CHARS), links: [] };
+      }
       throw new Error(`Unsupported content type: ${contentType}`);
     }
 

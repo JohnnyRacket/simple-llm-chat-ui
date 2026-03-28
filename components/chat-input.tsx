@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ContextUsageBar } from "@/components/context-usage-bar";
 import { ModelPicker } from "@/components/model-picker";
 import { useChatSettings, PORTS } from "@/components/chat-settings-provider";
-import { ArrowUp, Bot, Brain, Code, GitFork, LayoutDashboard, Minimize2, Paperclip, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
+import { ArrowUp, Bot, Brain, Code, FoldVertical, GitFork, LayoutDashboard, Minimize2, Paperclip, Square, Wrench, X, FileText, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 
 type ChatMessage = UIMessage<{
@@ -50,6 +50,7 @@ export const ChatInput = memo(function ChatInput({
   isCompactForking,
   showUsage,
   usage,
+  compression,
 }: {
   isLoading: boolean;
   hasMessages: boolean;
@@ -60,6 +61,7 @@ export const ChatInput = memo(function ChatInput({
   isCompactForking?: boolean;
   showUsage: boolean;
   usage: NonNullable<ChatMessage["metadata"]>["usage"] | undefined;
+  compression?: { tokensSaved: number; compressionRatio: number } | null;
 }) {
   const {
     selectedPort,
@@ -78,6 +80,8 @@ export const ChatInput = memo(function ChatInput({
     setProgrammaticEnabled,
     widgetEnabled,
     setWidgetEnabled,
+    compressionEnabled,
+    setCompressionEnabled,
     serverInfo,
     modelsInfo,
     models,
@@ -235,6 +239,19 @@ export const ChatInput = memo(function ChatInput({
             <LayoutDashboard className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Widgets</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setCompressionEnabled(!compressionEnabled)}
+            aria-pressed={compressionEnabled}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              compressionEnabled
+                ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <FoldVertical className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Compress</span>
+          </button>
           {toolsEnabled && (
             <button
               type="button"
@@ -362,6 +379,7 @@ export const ChatInput = memo(function ChatInput({
               inputTokens={usage?.inputTokens ?? 0}
               outputTokens={usage?.outputTokens ?? 0}
               contextSize={serverInfo.contextSize}
+              compression={compression}
               modelPicker={
                 models.length > 0 ? (
                   <ModelPicker

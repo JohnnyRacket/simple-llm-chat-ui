@@ -15,5 +15,14 @@ services:
     ports:
       - "6379:6379"
 
+  headroom:
+    build:
+      context: .
+      dockerfile: Dockerfile.headroom
+    ports:
+      - "8787:8787"
+    environment:
+      - HEADROOM_HOST=0.0.0.0
+
 volumes:
   pgdata:

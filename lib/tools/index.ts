@@ -9,3 +9,4 @@ export type {
 export { createDocument } from "./create-document";
 export { executeCode } from "./execute-code";
 export { renderWidget } from "./render-widget";
+export { getDatetime } from "./get-datetime";

@@ -4,7 +4,8 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest init --defaults)",
       "Bash(npx shadcn@latest add scroll-area --yes)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(find /Users/harrison/Development/simple-llm-chat-ui/lib -type f -name *.ts -o -name *.tsx)"
     ]
   }
 }
