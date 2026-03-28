@@ -14,10 +14,19 @@ type ToolPart = {
   preliminary?: boolean;
 };
 
+type SubAgentActivity = {
+  stepsCompleted: number;
+  activeToolCalls: Array<{ toolName: string }>;
+  completedToolCalls: Array<{ toolName: string }>;
+  totalToolCallCount: number;
+  lastActivity: string;
+};
+
 type SubAgentOutput = {
   result: string;
   error?: string;
   pending?: boolean;
+  activity?: SubAgentActivity;
 };
 
 type ParallelAgentOutput = {
@@ -25,6 +34,7 @@ type ParallelAgentOutput = {
   result: string;
   error?: string;
   pending?: boolean;
+  activity?: SubAgentActivity;
 };
 
 type ParallelAgentsOutput = {
@@ -77,31 +87,72 @@ function ParallelAgentsResult({ output }: { output: ParallelAgentsOutput }) {
   );
 }
 
+function SubAgentActivityIndicator({ activity }: { activity: SubAgentActivity }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+      {activity.stepsCompleted > 0 && (
+        <span className="font-mono">
+          {activity.stepsCompleted} step{activity.stepsCompleted > 1 ? "s" : ""}
+        </span>
+      )}
+      {activity.totalToolCallCount > 0 && (
+        <>
+          <span className="opacity-40">·</span>
+          <span className="font-mono">
+            {activity.totalToolCallCount} tool call{activity.totalToolCallCount !== 1 ? "s" : ""}
+          </span>
+        </>
+      )}
+      {activity.activeToolCalls.length > 0 && (
+        <>
+          <span className="opacity-40">·</span>
+          <span className="italic text-muted-foreground/60">
+            {activity.activeToolCalls.map(tc => tc.toolName).join(", ")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ParallelAgentsPending({ output }: { output: ParallelAgentsOutput }) {
   return (
     <div className="space-y-1.5">
       {output.agents.map((agent, i) => {
         const isPending = agent.pending === true && !agent.error;
         return (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            {isPending ? (
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-50" />
-            ) : agent.error ? (
-              <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
-            ) : (
-              <Check className="h-3 w-3 shrink-0 text-green-500" />
-            )}
-            <span className="flex-1 truncate opacity-80">
-              {agent.task.slice(0, 80)}{agent.task.length > 80 ? "…" : ""}
-            </span>
-            {isPending && (
-              <span className="shrink-0 text-muted-foreground/60 text-[10px] italic">{agent.result}</span>
-            )}
+          <div key={i} className="flex items-start gap-2 text-xs">
+            <div className="mt-0.5">
+              {isPending ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-50" />
+              ) : agent.error ? (
+                <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
+              ) : (
+                <Check className="h-3 w-3 shrink-0 text-green-500" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="truncate opacity-80 block">
+                {agent.task.slice(0, 80)}{agent.task.length > 80 ? "…" : ""}
+              </span>
+              {isPending && agent.activity ? (
+                <SubAgentActivityIndicator activity={agent.activity} />
+              ) : isPending ? (
+                <span className="text-muted-foreground/60 text-[10px] italic">{agent.result}</span>
+              ) : null}
+            </div>
           </div>
         );
       })}
     </div>
   );
+}
+
+function SubAgentPending({ output }: { output: SubAgentOutput }) {
+  if (!output.activity) {
+    return <p className="text-xs text-muted-foreground/60 italic">{output.result}</p>;
+  }
+  return <SubAgentActivityIndicator activity={output.activity} />;
 }
 
 type WidgetOutput = { html: string; title: string };
@@ -437,6 +488,12 @@ export function ToolCallPart({ part }: { part: ToolPart }) {
       {state.toolName === "parallelAgents" && state.isPending && state.hasOutput && (
         <div className="border-t border-foreground/10 px-3 py-2">
           <ParallelAgentsPending output={part.output as ParallelAgentsOutput} />
+        </div>
+      )}
+
+      {state.toolName === "subAgent" && state.isPending && state.hasOutput && (
+        <div className="border-t border-foreground/10 px-3 py-2">
+          <SubAgentPending output={part.output as SubAgentOutput} />
         </div>
       )}
 

@@ -6,7 +6,7 @@ import { errorMessage, logDebug, previewText } from "@/lib/debug-chat-stream";
 import { createHeadroomMiddleware, createStatsAccumulator } from "@/lib/headroom";
 
 const BASE_HOST = "http://192.168.1.168";
-const AGENT_HEARTBEAT_MS = 3_000;
+const AGENT_HEARTBEAT_MS = 2_000;
 const MAX_RETRIES = 2;
 const QUEUED_MESSAGE = "Queued...";
 const STARTING_MESSAGE = "Starting sub-agent...";
@@ -48,10 +48,19 @@ type SubAgentRunResult = {
   error?: string;
 };
 
+export type SubAgentActivity = {
+  stepsCompleted: number;
+  activeToolCalls: Array<{ toolName: string }>;
+  completedToolCalls: Array<{ toolName: string }>;
+  totalToolCallCount: number;
+  lastActivity: string;
+};
+
 export type SubAgentOutput = {
   result: string;
   error?: string;
   pending?: boolean;
+  activity?: SubAgentActivity;
 };
 
 export type ParallelAgentOutput = {
@@ -59,6 +68,7 @@ export type ParallelAgentOutput = {
   result: string;
   error?: string;
   pending?: boolean;
+  activity?: SubAgentActivity;
 };
 
 export type ParallelAgentsOutput = {
@@ -73,21 +83,24 @@ type ParallelAgentProgressEvent =
   | { type: "heartbeat" }
   | { type: "result"; index: number; result: SubAgentRunResult };
 
-function createPendingSubAgentOutput(result: string): SubAgentOutput {
+function createPendingSubAgentOutput(result: string, activity?: SubAgentActivity): SubAgentOutput {
   return {
     result,
     pending: true,
+    ...(activity ? { activity } : {}),
   };
 }
 
 function createPendingParallelAgentOutput(
   task: string,
-  result: string
+  result: string,
+  activity?: SubAgentActivity
 ): ParallelAgentOutput {
   return {
     task,
     result,
     pending: true,
+    ...(activity ? { activity } : {}),
   };
 }
 
@@ -118,6 +131,40 @@ function getHeartbeatMessage(previousMessage?: string) {
     : RUNNING_MESSAGE;
 }
 
+type SubAgentProgress = {
+  stepsCompleted: number;
+  currentStepNumber: number;
+  activeToolCalls: Array<{ toolName: string; toolCallId: string }>;
+  completedToolCalls: Array<{ toolName: string }>;
+  totalToolCallCount: number;
+  lastActivity: string;
+};
+
+function toSubAgentActivity(progress: SubAgentProgress): SubAgentActivity {
+  return {
+    stepsCompleted: progress.stepsCompleted,
+    activeToolCalls: progress.activeToolCalls.map(({ toolName }) => ({ toolName })),
+    completedToolCalls: progress.completedToolCalls,
+    totalToolCallCount: progress.totalToolCallCount,
+    lastActivity: progress.lastActivity,
+  };
+}
+
+function formatProgressMessage(progress: SubAgentProgress): string {
+  if (progress.activeToolCalls.length > 0) {
+    const names = progress.activeToolCalls.map(tc => tc.toolName).join(", ");
+    return `Step ${progress.currentStepNumber}: calling ${names}…`;
+  }
+  if (progress.stepsCompleted > 0) {
+    const parts = [`${progress.stepsCompleted} step${progress.stepsCompleted > 1 ? "s" : ""}`];
+    if (progress.totalToolCallCount > 0) {
+      parts.push(`${progress.totalToolCallCount} tool call${progress.totalToolCallCount !== 1 ? "s" : ""}`);
+    }
+    return parts.join(", ");
+  }
+  return STARTING_MESSAGE;
+}
+
 function createHeartbeatRace<T>(promise: Promise<T>) {
   return Promise.race<T | { type: "heartbeat" }>([
     promise,
@@ -131,7 +178,8 @@ async function runSubAgent(
   port: string,
   enableTools: boolean,
   enableCompression: boolean,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  onProgress?: (progress: SubAgentProgress) => void
 ): Promise<SubAgentRunResult> {
   logDebug("[subAgent]", "run start", {
     role,
@@ -153,6 +201,16 @@ async function runSubAgent(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (abortSignal?.aborted) break;
+
+    const progress: SubAgentProgress = {
+      stepsCompleted: 0,
+      currentStepNumber: 0,
+      activeToolCalls: [],
+      completedToolCalls: [],
+      totalToolCallCount: 0,
+      lastActivity: "Thinking…",
+    };
+
     try {
       logDebug("[subAgent]", "run attempt", {
         role,
@@ -164,6 +222,31 @@ async function runSubAgent(
         prompt: task,
         abortSignal,
         ...(subTools ? { tools: subTools, stopWhen: stepCountIs(6) } : {}),
+        experimental_onToolCallStart({ toolCall }) {
+          progress.activeToolCalls.push({
+            toolName: toolCall.toolName,
+            toolCallId: toolCall.toolCallId,
+          });
+          progress.lastActivity = `Calling ${toolCall.toolName}…`;
+          onProgress?.({ ...progress });
+        },
+        experimental_onToolCallFinish({ toolCall }) {
+          progress.activeToolCalls = progress.activeToolCalls.filter(
+            tc => tc.toolCallId !== toolCall.toolCallId
+          );
+          progress.completedToolCalls.push({ toolName: toolCall.toolName });
+          progress.totalToolCallCount++;
+          progress.lastActivity = `Finished ${toolCall.toolName}`;
+          onProgress?.({ ...progress });
+        },
+        onStepFinish({ stepNumber, toolCalls }) {
+          progress.stepsCompleted++;
+          progress.currentStepNumber = stepNumber + 1;
+          progress.lastActivity = toolCalls.length > 0
+            ? `Step ${progress.stepsCompleted} done (${toolCalls.length} tool call${toolCalls.length > 1 ? "s" : ""})`
+            : `Step ${progress.stepsCompleted} done`;
+          onProgress?.({ ...progress });
+        },
       });
       const output: SubAgentRunResult = {
         role,
@@ -230,15 +313,16 @@ export function createSubAgentTool(port: string, enableTools: boolean, enableCom
         role,
         task: previewText(task),
       });
+      let latestProgress: SubAgentProgress | null = null;
       const resultPromise: Promise<AgentProgressEvent> = runSubAgent(
         task,
         role,
         port,
         enableTools,
         enableCompression,
-        abortSignal
+        abortSignal,
+        (progress) => { latestProgress = progress; }
       ).then((result) => ({ type: "result", result }));
-      let lastMessage: string | undefined;
 
       while (true) {
         const next = await createHeartbeatRace(resultPromise);
@@ -254,12 +338,17 @@ export function createSubAgentTool(port: string, enableTools: boolean, enableCom
           return;
         }
 
-        lastMessage = getHeartbeatMessage(lastMessage);
+        const message = latestProgress
+          ? formatProgressMessage(latestProgress)
+          : STARTING_MESSAGE;
+        const activity = latestProgress
+          ? toSubAgentActivity(latestProgress)
+          : undefined;
         logDebug("[subAgent]", "tool heartbeat", {
           role,
-          status: lastMessage,
+          status: message,
         });
-        yield createPendingSubAgentOutput(lastMessage);
+        yield createPendingSubAgentOutput(message, activity);
       }
     },
   });
@@ -284,6 +373,7 @@ export function createParallelAgentsTool(port: string, enableTools: boolean, ena
       );
       yield { agents: [...results] };
 
+      const progressMap = new Map<number, SubAgentProgress>();
       const pending = agents.map(({ task }, index) => ({
         index,
         promise: runSubAgent(
@@ -292,7 +382,8 @@ export function createParallelAgentsTool(port: string, enableTools: boolean, ena
           port,
           enableTools,
           enableCompression,
-          abortSignal
+          abortSignal,
+          (progress) => { progressMap.set(index, progress); }
         ).then((result) => ({
           type: "result" as const,
           index,
@@ -312,9 +403,11 @@ export function createParallelAgentsTool(port: string, enableTools: boolean, ena
           for (const { index } of pending) {
             const agent = results[index];
             if (agent.pending && !agent.error) {
+              const agentProgress = progressMap.get(index);
               results[index] = createPendingParallelAgentOutput(
                 agent.task,
-                getHeartbeatMessage(agent.result)
+                agentProgress ? formatProgressMessage(agentProgress) : getHeartbeatMessage(agent.result),
+                agentProgress ? toSubAgentActivity(agentProgress) : undefined
               );
             }
           }
